@@ -79,30 +79,47 @@ st.sidebar.caption(f"Total Registered Devices: {len(df):,} units")
 # Module 1: Home Page
 # ==============================================================================
 if page == "Home Page":
-    st.title("🏠 Home Page - Executive Overview")
-    st.caption("Key Metrics and Operational Summary")
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total Registered Devices", f"{len(df):,} units")
-    m2.metric("Product Configurations", f"{len(all_products)}")
-    m3.metric("Free End Date Records", f"{df['FREE_END_TIME'].notnull().sum():,}")
-    m4.metric("Active Countries/Regions", f"{df['COUNTRY_CN'].nunique()}")
-
+    st.title("HFT Sold Units Dashboard")
+    st.caption("Monthly Update Data Dashboard")
     st.write("---")
-    st.subheader("📋 Data Preview")
-    st.dataframe(
-        df[
-            [
-                "SERIAL_NO",
-                "Product",
-                "REG_TIME",
-                "UPDATE_TIME",
-                "FREE_END_TIME",
-                "COUNTRY_CN",
-                "EMAIL",
-            ]
-        ].head(30)
+
+    st.subheader("Welcome")
+    st.write("This is the main page of the dashboard.")
+    st.write(
+        "Please select a page from the sidebar menu to view different"
+        " analytics reports."
     )
+    st.write("---")
+
+    # 3 个状态与指标卡片 (Data Source / Pages / Status)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.caption("Data Source")
+        st.subheader("aio历史数据.xlsx")
+    with col2:
+        st.caption("Total Records")
+        st.subheader(f"{len(df):,} Rows")
+    with col3:
+        st.caption("Status")
+        st.subheader("Ready")
+
+    st.write("")
+    st.write("")
+
+    # 蓝色说明提示框 (匹配截图提示框风格)
+    st.info("""
+    **System Navigation Guidance:**
+    
+    All operational modules and analytical charts are neatly organized in the sidebar menu on the left:
+    
+    * **Registration Trend**: Multi-product registration growth over time.
+    * **Expiration & Renewal**: Track upcoming software expiration dates and export targeted marketing lists.
+    * **Software Update & Activity**: Monitor user engagement and inactive device risks.
+    * **Geographic Hotmap**: View global & regional device distribution.
+    * **Lifecycle Lead Time**: Measure production, sale, and activation delays.
+    
+    *Please click any menu item on the left to start exploring.*
+    """)
 
 # ==============================================================================
 # Module 2: Expiration & Renewal
