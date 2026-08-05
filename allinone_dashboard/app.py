@@ -79,7 +79,7 @@ st.sidebar.caption(f"Total Registered Devices: {len(df):,} units")
 # Module 1: Home Page
 # ==============================================================================
 if page == "Home Page":
-    st.title("HFT Sold Units Dashboard")
+    st.title("AllinOne Sold Units Dashboard")
     st.caption("Monthly Update Data Dashboard")
     st.write("---")
 
