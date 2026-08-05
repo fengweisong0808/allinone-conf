@@ -13,13 +13,12 @@ st.set_page_config(page_title="asTech/AIO Operation Dashboard", layout="wide")
 # 2. Load and Preprocess Data
 @st.cache_data
 def load_data():
-    # 获取 app.py 所在的文件夹路径，确保准确读取同目录下的 Excel 文件
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(current_dir, "aio历史数据.xlsx")
+    # 文件名已更新为 AIO data.xlsx
+    file_path = os.path.join(current_dir, "AIO data.xlsx")
 
     df = pd.read_excel(file_path)
 
-    # Keep original product configuration names (Chinese configuration names preserved)
     short_names = {
         "ASTECH定制ALL IN ONE诊断配置(北美)": "ASTECH定制ALL IN ONE诊断配置(北美)",
         "asTech ALL-IN-ONE(4G)北美主机扩展配置": (
@@ -43,7 +42,6 @@ def load_data():
     }
     df["Product"] = df["CONF_NAME"].map(short_names).fillna(df["CONF_NAME"])
 
-    # DateTime Conversions
     df["CREATE_TIME"] = pd.to_datetime(df["CREATE_TIME"], errors="coerce")
     df["SALE_TIME"] = pd.to_datetime(df["SALE_TIME"], errors="coerce")
     df["REG_TIME"] = pd.to_datetime(df["REG_TIME"], errors="coerce")
@@ -62,24 +60,24 @@ page = st.sidebar.radio(
     "Select Page",
     [
         "Home Page",
+        "Registration Trend",
         "Expiration & Renewal",
         "Software Update & Activity",
-        "Registration Trend",
         "Geographic Hotmap",
         "Lifecycle Lead Time",
     ],
-    index=1,
+    index=0,
 )
 
 st.sidebar.write("---")
-st.sidebar.caption("Data Source: aio历史数据.xlsx")
-st.sidebar.caption(f"Total Registered Devices: {len(df):,} units")
+st.sidebar.caption("Logged in as: admin")
+st.sidebar.caption(f"Data Rows: {len(df):,} units")
 
 # ==============================================================================
 # Module 1: Home Page
 # ==============================================================================
 if page == "Home Page":
-    st.title("AllinOne Sold Units Dashboard")
+    st.title("HFT Sold Units Dashboard")
     st.caption("Monthly Update Data Dashboard")
     st.write("---")
 
@@ -91,11 +89,10 @@ if page == "Home Page":
     )
     st.write("---")
 
-    # 3 个状态与指标卡片 (Data Source / Pages / Status)
     col1, col2, col3 = st.columns(3)
     with col1:
         st.caption("Data Source")
-        st.subheader("aio历史数据.xlsx")
+        st.subheader("AIO data.xlsx")
     with col2:
         st.caption("Total Records")
         st.subheader(f"{len(df):,} Rows")
@@ -106,7 +103,6 @@ if page == "Home Page":
     st.write("")
     st.write("")
 
-    # 蓝色说明提示框 (匹配截图提示框风格)
     st.info("""
     **System Navigation Guidance:**
     
@@ -122,7 +118,62 @@ if page == "Home Page":
     """)
 
 # ==============================================================================
-# Module 2: Expiration & Renewal
+# Module 2: Registration Trend
+# ==============================================================================
+elif page == "Registration Trend":
+    st.title("📈 Product Registration Trend")
+    st.caption(
+        "Analyze registration growth by REG_TIME across multiple"
+        " configurations"
+    )
+
+    col_t1, col_t2 = st.columns([1, 2])
+    with col_t1:
+        timebase = st.radio("Timebase:", ["By Month", "By Week"], horizontal=True)
+    with col_t2:
+        selected_prods_trend = st.multiselect(
+            "Product Display Switches:", all_products, default=all_products
+        )
+
+    t_df = df[df["Product"].isin(selected_prods_trend)].copy()
+
+    if timebase == "By Month":
+        t_df["Period"] = t_df["REG_TIME"].dt.to_period("M").astype(str)
+    else:
+        t_df["Period"] = t_df["REG_TIME"].dt.to_period("W").astype(str)
+
+    grouped = (
+        t_df.groupby(["Period", "Product"])
+        .size()
+        .reset_index(name="Registered Units")
+    )
+
+    st.write("---")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Total Registered Units", f"{grouped['Registered Units'].sum():,}")
+    m2.metric(
+        "Products Enabled", f"{len(selected_prods_trend)} / {len(all_products)}"
+    )
+    m3.metric("Complete Periods", grouped["Period"].nunique())
+
+    st.subheader("Registered Product Trend Chart")
+    fig_line = px.line(
+        grouped,
+        x="Period",
+        y="Registered Units",
+        color="Product",
+        markers=True,
+    )
+    fig_line.update_layout(
+        height=500,
+        xaxis_title="",
+        yaxis_title="Registered Units",
+        hovermode="x unified",
+    )
+    st.plotly_chart(fig_line, use_container_width=True)
+
+# ==============================================================================
+# Module 3: Expiration & Renewal
 # ==============================================================================
 elif page == "Expiration & Renewal":
     st.title("⏳ Monthly Renewal / Expiration Histogram")
@@ -130,7 +181,6 @@ elif page == "Expiration & Renewal":
         "Track software expiration timelines and export targeted renewal lists"
     )
 
-    # Filters
     col_exp1, col_exp2 = st.columns(2)
     with col_exp1:
         selected_prods_exp = st.multiselect(
@@ -141,7 +191,6 @@ elif page == "Expiration & Renewal":
         df["Product"].isin(selected_prods_exp) & df["FREE_END_TIME"].notnull()
     ].copy()
 
-    # Calculate Expiration Tiers
     now = pd.Timestamp.now()
     exp_df["Days_To_Expire"] = (exp_df["FREE_END_TIME"] - now).dt.days
 
@@ -246,7 +295,7 @@ elif page == "Expiration & Renewal":
     )
 
 # ==============================================================================
-# Module 3: Software Update & Activity
+# Module 4: Software Update & Activity
 # ==============================================================================
 elif page == "Software Update & Activity":
     st.title("🔄 Software Update & User Engagement")
@@ -324,61 +373,6 @@ elif page == "Software Update & Activity":
             ]
         ]
     )
-
-# ==============================================================================
-# Module 4: Registration Trend
-# ==============================================================================
-elif page == "Registration Trend":
-    st.title("📈 Product Registration Trend")
-    st.caption(
-        "Analyze registration growth by REG_TIME across multiple"
-        " configurations"
-    )
-
-    col_t1, col_t2 = st.columns([1, 2])
-    with col_t1:
-        timebase = st.radio("Timebase:", ["By Month", "By Week"], horizontal=True)
-    with col_t2:
-        selected_prods_trend = st.multiselect(
-            "Product Display Switches:", all_products, default=all_products
-        )
-
-    t_df = df[df["Product"].isin(selected_prods_trend)].copy()
-
-    if timebase == "By Month":
-        t_df["Period"] = t_df["REG_TIME"].dt.to_period("M").astype(str)
-    else:
-        t_df["Period"] = t_df["REG_TIME"].dt.to_period("W").astype(str)
-
-    grouped = (
-        t_df.groupby(["Period", "Product"])
-        .size()
-        .reset_index(name="Registered Units")
-    )
-
-    st.write("---")
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Total Registered Units", f"{grouped['Registered Units'].sum():,}")
-    m2.metric(
-        "Products Enabled", f"{len(selected_prods_trend)} / {len(all_products)}"
-    )
-    m3.metric("Complete Periods", grouped["Period"].nunique())
-
-    st.subheader("Registered Product Trend Chart")
-    fig_line = px.line(
-        grouped,
-        x="Period",
-        y="Registered Units",
-        color="Product",
-        markers=True,
-    )
-    fig_line.update_layout(
-        height=500,
-        xaxis_title="",
-        yaxis_title="Registered Units",
-        hovermode="x unified",
-    )
-    st.plotly_chart(fig_line, use_container_width=True)
 
 # ==============================================================================
 # Module 5: Geographic Hotmap
