@@ -1,4 +1,5 @@
 import datetime
+import os
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -12,7 +13,11 @@ st.set_page_config(page_title="asTech/AIO Operation Dashboard", layout="wide")
 # 2. Load and Preprocess Data
 @st.cache_data
 def load_data():
-    df = pd.read_excel("aio历史数据.xlsx")
+    # 获取 app.py 所在的文件夹路径，确保准确读取同目录下的 Excel 文件
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(current_dir, "aio历史数据.xlsx")
+
+    df = pd.read_excel(file_path)
 
     # Keep original product configuration names (Chinese configuration names preserved)
     short_names = {
