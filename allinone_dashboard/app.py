@@ -12,7 +12,7 @@ st.set_page_config(page_title="asTech/AIO Operation Dashboard", layout="wide")
 # 2. Load and Preprocess Data
 @st.cache_data
 def load_data():
-    df = pd.read_excel("dashboard_project/aio历史数据.xlsx")
+    df = pd.read_excel("aio历史数据.xlsx")
 
     # Keep original product configuration names (Chinese configuration names preserved)
     short_names = {
