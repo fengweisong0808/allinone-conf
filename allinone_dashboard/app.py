@@ -460,7 +460,7 @@ elif page == "Registration Trend":
             st.plotly_chart(fig_line, width="stretch")
 
             # 选择时间的滑动轴贴在图表下方
-            st.write("🗓️ **Select Time Range / 拖动选择时间窗口**")
+            st.write("**Select Time Range**")
             if len(all_periods) > 1:
                 st.select_slider(
                     "Select Time Range",
