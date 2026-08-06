@@ -165,15 +165,15 @@ elif page == "Registration Trend":
             " displayed in the same chart."
         )
 
-        # 7 种互相间区分度极强的高对比度标准色（红、绿、强天蓝、深蓝、金橙、紫、黑灰）
+        # 7 种互不重复、高对比度的鲜艳色彩（红、翠绿、深咖啡橙、天蓝、金黄、深紫、深灰）
         high_contrast_palette = [
-            "#e74c3c",  # 鲜红 Red
-            "#2ecc71",  # 翠绿 Green
-            "#00bc8c",  # 青绿 Teal
-            "#3498db",  # 强天蓝 Bright Blue
-            "#f39c12",  # 金橙色 Orange
-            "#9b59b6",  # 亮紫 Purple
-            "#34495e",  # 深蓝灰 Dark Grey
+            "#e74c3c",  # 1. 鲜红 Red
+            "#2ecc71",  # 2. 翠绿 Green
+            "#d35400",  # 3. 咖啡橙 Brown/Orange（替换掉原来的青绿）
+            "#3498db",  # 4. 强天蓝 Bright Blue
+            "#f1c40f",  # 5. 亮金黄 Yellow
+            "#8e44ad",  # 6. 深紫 Purple
+            "#2c3e50",  # 7. 暗蓝灰 Dark Grey
         ]
 
         # 核心改进 1：建立【产品名称 -> 固有颜色】的绝对映射字典，确保选择单个产品时颜色永远不变！
