@@ -118,7 +118,7 @@ if page == "Home Page":
     """)
 
 # ==============================================================================
-# Module 2: Registration Trend (完全1:1还原前两张图的精美开关与卡片布局)
+# Module 2: Registration Trend (包含 1:1 还原的可折叠 Show Trend Data 透视表)
 # ==============================================================================
 elif page == "Registration Trend":
     st.title("Product Registration Trend")
@@ -132,7 +132,7 @@ elif page == "Registration Trend":
 
     st.write("")
     
-    # 2. 顶部控制器区域：Trend View & Timebase & Product Switches
+    # 2. 顶部控制器区域：Trend View & Timebase & Product Display Switches
     ctrl_col1, ctrl_col2 = st.columns([1, 2.5])
     
     with ctrl_col1:
@@ -156,9 +156,7 @@ elif page == "Registration Trend":
         st.write("**Product Display Switches**")
         st.caption("Turn individual product lines on or off. All enabled products are displayed in the same chart.")
         
-        # 使用横向多列动态生成每个产品的 Switch (Toggle 开关)
         enabled_products = []
-        # 为每个产品配上专属颜色指示
         colors = ['#d9534f', '#5cb85c', '#5bc0de', '#0275d8', '#f0ad4e', '#6f42c1', '#e83e8c']
         
         # 将产品按每行 4 个开关横向排布
@@ -166,11 +164,9 @@ elif page == "Registration Trend":
         for idx, prod_name in enumerate(all_products):
             col_target = switch_cols[idx % 4]
             with col_target:
-                # 默认全部开启 (value=True)
                 is_on = st.toggle(prod_name, value=True, key=f"sw_{idx}")
                 if is_on:
                     enabled_products.append(prod_name)
-                # 开关下方的颜色点标识
                 color_hex = colors[idx % len(colors)]
                 st.markdown(f"<div style='margin-top:-10px; margin-bottom:10px; font-size:12px; color:{color_hex};'>● Chart color</div>", unsafe_allow_html=True)
 
@@ -186,7 +182,7 @@ elif page == "Registration Trend":
 
     grouped = t_df.groupby(['Period', 'Product']).size().reset_index(name='Registered Units')
 
-    # 3. 4个精美的 KPI 白框卡片 (对应图1 & 2的 4个 Box Cards)
+    # 3. 4个精美的 KPI 卡片
     st.write("---")
     m1, m2, m3, m4 = st.columns(4)
     
@@ -222,7 +218,34 @@ elif page == "Registration Trend":
             height=500,
             margin=dict(l=10, r=10, t=10, b=10)
         )
-        st.plotly_chart(fig_line, use_container_width=True)
+        st.plotly_chart(fig_line, width="stretch")
+        
+        # ==============================================================================
+        # 5. 可折叠趋势数据透视表格 (1:1 匹配截图 Show Trend Data)
+        # ==============================================================================
+        st.write("")
+        with st.expander("Show Trend Data", expanded=False):
+            # 将分组数据转换为透视表结构：行是 Period，列是各 Product 名称
+            pivot_df = grouped.pivot(index='Period', columns='Product', values='Registered Units').fillna(0).astype(int)
+            
+            # 确保开启开关的所有产品列都存在
+            for p in enabled_products:
+                if p not in pivot_df.columns:
+                    pivot_df[p] = 0
+            
+            # 按开启的产品列排序，并新增 Total（总计）列
+            pivot_df = pivot_df[enabled_products]
+            pivot_df['Total'] = pivot_df.sum(axis=1)
+            
+            # 展平索引并重命名列
+            pivot_df = pivot_df.reset_index()
+            
+            # 显示精美表格
+            st.dataframe(pivot_df, width="stretch", hide_index=True)
+            
+        # 最底部的状态提示文字 (对应截图底部 footer)
+        st.caption(f"Loaded products: {len(all_products)} | Registered rows: {len(df):,} | Default timebase: {timebase} | View: {trend_view}")
+
     else:
         st.warning("Please turn on at least one product switch above to view the trend.")
 
