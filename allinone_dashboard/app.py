@@ -188,10 +188,10 @@ elif page == "Registration Trend":
             # 4个 KPI 卡片
             st.write("---")
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Registered Units 🛈", f"{yoy_grouped['Registered Units'].sum():,}")
+            m1.metric("Registered Units", f"{yoy_grouped['Registered Units'].sum():,}")
             m2.metric("Products Enabled", f"{len(enabled_products)} / {len(all_products)}")
             m3.metric("Years Compared", yoy_grouped['Year'].nunique())
-            m4.metric("Latest Month Units 🛈", f"{yoy_grouped.iloc[-1]['Registered Units']:,}" if not yoy_grouped.empty else "0")
+            m4.metric("Latest Month Units", f"{yoy_grouped.iloc[-1]['Registered Units']:,}" if not yoy_grouped.empty else "0")
 
             st.write("")
             st.subheader("Year-over-Year Comparison (Overlay by Month)")
