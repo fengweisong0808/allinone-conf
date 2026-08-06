@@ -118,7 +118,7 @@ if page == "Home Page":
     """)
 
 # ==============================================================================
-# Module 2: Registration Trend (修复时间乱序穿梭 + 精美布局)
+# Module 2: Registration Trend (真正支持 Year-over-Year 同比图与常规趋势图双模式切换)
 # ==============================================================================
 elif page == "Registration Trend":
     st.title("Product Registration Trend")
@@ -128,7 +128,7 @@ elif page == "Registration Trend":
     with st.expander(" > Data loading notes (3)"):
         st.write("1. Only rows with valid registration timestamps are included.")
         st.write("2. Current incomplete periods are dynamically filtered out.")
-        st.write("3. Date aggregation supports both Monthly and Weekly view.")
+        st.write("3. Supports both linear trend and Year-over-Year (YoY) overlay comparison.")
 
     st.write("")
     
@@ -169,105 +169,173 @@ elif page == "Registration Trend":
                 color_hex = colors[idx % len(colors)]
                 st.markdown(f"<div style='margin-top:-10px; margin-bottom:10px; font-size:12px; color:{color_hex};'>● Chart color</div>", unsafe_allow_html=True)
 
-    # 3. 数据精准过滤与严格按时间排序（关键修复点！）
+    # 3. 数据过滤与日期提取
     t_df = df[df['Product'].isin(enabled_products)].copy()
     t_df['REG_TIME'] = pd.to_datetime(t_df['REG_TIME'], errors='coerce')
     t_df = t_df.dropna(subset=['REG_TIME'])
 
-    if timebase == "By Month":
-        t_df['Period_Sort'] = t_df['REG_TIME'].dt.to_period('M')
+    t_df['Year'] = t_df['REG_TIME'].dt.year.astype(str)
+    t_df['Month_Num'] = t_df['REG_TIME'].dt.month
+    t_df['Month_Str'] = t_df['REG_TIME'].dt.strftime('%m (%b)') # 01 (Jan), 02 (Feb)...
+
+    # 4. 根据 Trend View 模式分流构建绘图数据
+    if trend_view == "Year-over-Year Comparison":
+        # 模式 A：同比对比 (YoY) -> X轴是 1-12 月，线条按 Year 区分
+        if timebase == "By Month":
+            yoy_grouped = t_df.groupby(['Year', 'Month_Num', 'Month_Str']).size().reset_index(name='Registered Units')
+            yoy_grouped = yoy_grouped.sort_values(['Month_Num', 'Year'])
+            
+            # 4个 KPI 卡片
+            st.write("---")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Registered Units 🛈", f"{yoy_grouped['Registered Units'].sum():,}")
+            m2.metric("Products Enabled", f"{len(enabled_products)} / {len(all_products)}")
+            m3.metric("Years Compared", yoy_grouped['Year'].nunique())
+            m4.metric("Latest Month Units 🛈", f"{yoy_grouped.iloc[-1]['Registered Units']:,}" if not yoy_grouped.empty else "0")
+
+            st.write("")
+            st.subheader("Year-over-Year Comparison (Overlay by Month)")
+            
+            month_order = sorted(yoy_grouped['Month_Str'].unique())
+            fig_line = px.line(
+                yoy_grouped,
+                x='Month_Str',
+                y='Registered Units',
+                color='Year', # 按年份划不同颜色曲线
+                markers=True,
+                category_orders={"Month_Str": month_order}
+            )
+            fig_line.update_layout(
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, title="Year"),
+                xaxis_title="Month",
+                yaxis_title="Registered Units",
+                hovermode="x unified",
+                height=520
+            )
+            st.plotly_chart(fig_line, width="stretch")
+
+        else: # By Week
+            t_df['Week_Num'] = t_df['REG_TIME'].dt.isocalendar().week
+            yoy_grouped = t_df.groupby(['Year', 'Week_Num']).size().reset_index(name='Registered Units')
+            yoy_grouped = yoy_grouped.sort_values(['Week_Num', 'Year'])
+            
+            st.write("---")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Registered Units 🛈", f"{yoy_grouped['Registered Units'].sum():,}")
+            m2.metric("Products Enabled", f"{len(enabled_products)} / {len(all_products)}")
+            m3.metric("Years Compared", yoy_grouped['Year'].nunique())
+            m4.metric("Active Weeks", yoy_grouped['Week_Num'].nunique())
+
+            st.write("")
+            st.subheader("Year-over-Year Comparison (Overlay by Week)")
+            fig_line = px.line(
+                yoy_grouped,
+                x='Week_Num',
+                y='Registered Units',
+                color='Year',
+                markers=True
+            )
+            fig_line.update_layout(
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, title="Year"),
+                xaxis_title="Week Number",
+                yaxis_title="Registered Units",
+                hovermode="x unified",
+                height=520
+            )
+            st.plotly_chart(fig_line, width="stretch")
+
     else:
-        t_df['Period_Sort'] = t_df['REG_TIME'].dt.to_period('W')
+        # 模式 B：常规多产品趋势图 (Linear Registration Trend) -> X轴是时间轴，线条按 Product 区分
+        if timebase == "By Month":
+            t_df['Period_Sort'] = t_df['REG_TIME'].dt.to_period('M')
+        else:
+            t_df['Period_Sort'] = t_df['REG_TIME'].dt.to_period('W')
 
-    t_df['Period'] = t_df['Period_Sort'].astype(str)
+        t_df['Period'] = t_df['Period_Sort'].astype(str)
 
-    # 按时间 Period_Sort 和 Product 统计，并严格按时间轴顺序排序！
-    grouped = t_df.groupby(['Period_Sort', 'Period', 'Product']).size().reset_index(name='Registered Units')
-    grouped = grouped.sort_values('Period_Sort').reset_index(drop=True)
+        grouped = t_df.groupby(['Period_Sort', 'Period', 'Product']).size().reset_index(name='Registered Units')
+        grouped = grouped.sort_values('Period_Sort').reset_index(drop=True)
 
-    # 4. 时间范围滑动选择器
-    if not grouped.empty:
-        all_periods = sorted(grouped['Period'].unique())
-        
+        if not grouped.empty:
+            all_periods = sorted(grouped['Period'].unique())
+            
+            st.write("---")
+            st.write("**Select Time Range**")
+            
+            if len(all_periods) > 1:
+                start_period, end_period = st.select_slider(
+                    "Filter date range:",
+                    options=all_periods,
+                    value=(all_periods[0], all_periods[-1]),
+                    label_visibility="collapsed"
+                )
+                grouped = grouped[(grouped['Period'] >= start_period) & (grouped['Period'] <= end_period)]
+
+        # 4个 KPI 卡片
         st.write("---")
-        st.write("**Select Time Range**")
-        
-        if len(all_periods) > 1:
-            start_period, end_period = st.select_slider(
-                "Filter date range:",
-                options=all_periods,
-                value=(all_periods[0], all_periods[-1]),
-                label_visibility="collapsed"
-            )
-            grouped = grouped[(grouped['Period'] >= start_period) & (grouped['Period'] <= end_period)]
+        m1, m2, m3, m4 = st.columns(4)
+        total_units = grouped['Registered Units'].sum() if not grouped.empty else 0
+        prod_enabled_str = f"{len(enabled_products)} / {len(all_products)}"
+        complete_periods = grouped['Period'].nunique() if not grouped.empty else 0
+        latest_units = grouped[grouped['Period'] == grouped['Period'].max()]['Registered Units'].sum() if not grouped.empty else 0
 
-    # 5. 4个 KPI 卡片
-    st.write("---")
-    m1, m2, m3, m4 = st.columns(4)
-    
-    total_units = grouped['Registered Units'].sum() if not grouped.empty else 0
-    prod_enabled_str = f"{len(enabled_products)} / {len(all_products)}"
-    complete_periods = grouped['Period'].nunique() if not grouped.empty else 0
-    latest_units = grouped[grouped['Period'] == grouped['Period'].max()]['Registered Units'].sum() if not grouped.empty else 0
+        m1.metric("Registered Units", f"{total_units:,}")
+        m2.metric("Products Enabled", prod_enabled_str)
+        m3.metric("Complete Periods", complete_periods)
+        m4.metric("Latest Complete Period", f"{latest_units:,}")
 
-    m1.metric("Registered Units", f"{total_units:,}")
-    m2.metric("Products Enabled", prod_enabled_str)
-    m3.metric("Complete Periods", complete_periods)
-    m4.metric("Latest Complete Period", f"{latest_units:,}")
-
-    st.caption("Current incomplete period is not included.")
-    st.write("")
-
-    # 6. 折线图绘制（修复 X 轴顺序与连接）
-    st.subheader("Registered Product Trend")
-    if not grouped.empty:
-        sorted_unique_periods = sorted(grouped['Period'].unique())
-
-        fig_line = px.line(
-            grouped, 
-            x='Period', 
-            y='Registered Units', 
-            color='Product', 
-            markers=True,
-            color_discrete_sequence=colors,
-            category_orders={"Period": sorted_unique_periods} # 强制强制固定 X 轴为从左到右的时间正序
-        )
-        
-        fig_line.update_layout(
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-            xaxis_title="",
-            yaxis_title="Registered Units",
-            hovermode="x unified",
-            height=530,
-            margin=dict(l=10, r=10, t=10, b=10),
-            xaxis=dict(
-                type="category",
-                categoryorder="array",
-                categoryarray=sorted_unique_periods, # 锁定时间坐标
-                rangeslider=dict(visible=True)
-            )
-        )
-        st.plotly_chart(fig_line, width="stretch")
-
-        # 7. 可折叠透视表
+        st.caption("Current incomplete period is not included.")
         st.write("")
-        with st.expander("Show Trend Data", expanded=False):
-            pivot_df = grouped.pivot(index='Period', columns='Product', values='Registered Units').fillna(0).astype(int)
-            
-            for p in enabled_products:
-                if p not in pivot_df.columns:
-                    pivot_df[p] = 0
-            
-            pivot_df = pivot_df[enabled_products]
-            pivot_df['Total'] = pivot_df.sum(axis=1)
-            pivot_df = pivot_df.reset_index()
-            
-            st.dataframe(pivot_df, width="stretch", hide_index=True)
-            
-        st.caption(f"Loaded products: {len(all_products)} | Registered rows: {len(df):,} | Default timebase: {timebase} | View: {trend_view}")
 
-    else:
-        st.warning("Please turn on at least one product switch above to view the trend.")
+        st.subheader("Registered Product Trend")
+        if not grouped.empty:
+            sorted_unique_periods = sorted(grouped['Period'].unique())
+
+            fig_line = px.line(
+                grouped, 
+                x='Period', 
+                y='Registered Units', 
+                color='Product', 
+                markers=True,
+                color_discrete_sequence=colors,
+                category_orders={"Period": sorted_unique_periods}
+            )
+            
+            fig_line.update_layout(
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                xaxis_title="",
+                yaxis_title="Registered Units",
+                hovermode="x unified",
+                height=530,
+                margin=dict(l=10, r=10, t=10, b=10),
+                xaxis=dict(
+                    type="category",
+                    categoryorder="array",
+                    categoryarray=sorted_unique_periods,
+                    rangeslider=dict(visible=True)
+                )
+            )
+            st.plotly_chart(fig_line, width="stretch")
+
+            # 5. 可折叠透视表
+            st.write("")
+            with st.expander("Show Trend Data", expanded=False):
+                pivot_df = grouped.pivot(index='Period', columns='Product', values='Registered Units').fillna(0).astype(int)
+                
+                for p in enabled_products:
+                    if p not in pivot_df.columns:
+                        pivot_df[p] = 0
+                
+                pivot_df = pivot_df[enabled_products]
+                pivot_df['Total'] = pivot_df.sum(axis=1)
+                pivot_df = pivot_df.reset_index()
+                
+                st.dataframe(pivot_df, width="stretch", hide_index=True)
+                
+            st.caption(f"Loaded products: {len(all_products)} | Registered rows: {len(df):,} | Default timebase: {timebase} | View: {trend_view}")
+
+        else:
+            st.warning("Please turn on at least one product switch above to view the trend.")
         
 # ==============================================================================
 # Module 3: Expiration & Renewal
