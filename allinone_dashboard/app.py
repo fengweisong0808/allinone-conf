@@ -157,7 +157,15 @@ elif page == "Registration Trend":
         st.caption("Turn individual product lines on or off. All enabled products are displayed in the same chart.")
         
         enabled_products = []
-        colors = ['#d9534f', '#5cb85c', '#5bc0de', '#0275d8', '#f0ad4e', '#6f42c1', '#e83e8c']
+        colors = [
+    '#d9534f',
+    '#5cb85c',
+    '#5bc0de',
+    '#0275d8',
+    '#f0ad4e',
+    '#6f42c1',
+    '#e67e22',
+]
         
         switch_cols = st.columns(4)
         for idx, prod_name in enumerate(all_products):
