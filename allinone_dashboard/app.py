@@ -118,7 +118,7 @@ if page == "Home Page":
     """)
 
 # ==============================================================================
-# Module 2: Registration Trend (锁定产品专属颜色 + 真同比模式 + 极高对比度调色盘)
+# Module 2: Registration Trend
 # ==============================================================================
 elif page == "Registration Trend":
     st.title("Product Registration Trend")
@@ -127,10 +127,11 @@ elif page == "Registration Trend":
         " week or month is automatically excluded."
     )
 
-    # 1. 伸缩说明提示
     with st.expander(" > Data loading notes (3)"):
         st.write("1. Only rows with valid registration timestamps are included.")
-        st.write("2. Current incomplete periods are dynamically filtered out.")
+        st.write(
+            "2. Current incomplete periods are dynamically filtered out."
+        )
         st.write(
             "3. Supports both linear trend and Year-over-Year (YoY) overlay"
             " comparison."
@@ -138,7 +139,6 @@ elif page == "Registration Trend":
 
     st.write("")
 
-    # 2. 顶部控制器区域
     ctrl_col1, ctrl_col2 = st.columns([1, 2.5])
 
     with ctrl_col1:
@@ -165,18 +165,16 @@ elif page == "Registration Trend":
             " displayed in the same chart."
         )
 
-        # 7 种互不重复、高对比度的鲜艳色彩（红、翠绿、深咖啡橙、天蓝、金黄、深紫、深灰）
         high_contrast_palette = [
-            "#e74c3c",  # 1. 鲜红 Red
-            "#2ecc71",  # 2. 翠绿 Green
-            "#d35400",  # 3. 咖啡橙 Brown/Orange（替换掉原来的青绿）
-            "#3498db",  # 4. 强天蓝 Bright Blue
-            "#f1c40f",  # 5. 亮金黄 Yellow
-            "#8e44ad",  # 6. 深紫 Purple
-            "#2c3e50",  # 7. 暗蓝灰 Dark Grey
+            "#e74c3c",  # 鲜红
+            "#2ecc71",  # 翠绿
+            "#d35400",  # 咖啡橙
+            "#3498db",  # 强天蓝
+            "#f1c40f",  # 亮金黄
+            "#8e44ad",  # 深紫
+            "#2c3e50",  # 暗蓝灰
         ]
 
-        # 核心改进 1：建立【产品名称 -> 固有颜色】的绝对映射字典，确保选择单个产品时颜色永远不变！
         prod_color_map = {
             prod: high_contrast_palette[i % len(high_contrast_palette)]
             for i, prod in enumerate(all_products)
@@ -191,7 +189,6 @@ elif page == "Registration Trend":
                 if is_on:
                     enabled_products.append(prod_name)
 
-                # 显示该产品绑定的专属固定色彩指示点
                 color_hex = prod_color_map[prod_name]
                 st.markdown(
                     f"<div style='margin-top:-10px; margin-bottom:10px;"
@@ -210,19 +207,36 @@ elif page == "Registration Trend":
 
     # 4. 根据 Trend View 模式分流构建绘图数据
     if trend_view == "Year-over-Year Comparison":
-        # 年份对比专属高对比调色板（按年份 2022, 2023, 2024, 2025, 2026 等强区分）
+        # 获取数据中出现的所有年份，升序排列
+        all_years = sorted(t_df["Year"].unique())
+
+        st.write("---")
+        st.write("**Select Years to Compare**")
+
+        # 优化点 2：横向选择需要对比的年份（可多选）
+        selected_years = st.multiselect(
+            "Select Years:",
+            options=all_years,
+            default=all_years,  # 默认勾选所有年份，也可自行勾选特定年份
+            label_visibility="collapsed",
+        )
+
+        # 过滤选中的年份数据
+        t_yoy_df = t_df[t_df["Year"].isin(selected_years)].copy()
+
         yoy_color_sequence = [
             "#3498db",
             "#e74c3c",
             "#2ecc71",
             "#f39c12",
-            "#9b59b6",
+            "#8e44ad",
             "#1abc9c",
+            "#2c3e50",
         ]
 
         if timebase == "By Month":
             yoy_grouped = (
-                t_df.groupby(["Year", "Month_Num", "Month_Str"])
+                t_yoy_df.groupby(["Year", "Month_Num", "Month_Str"])
                 .size()
                 .reset_index(name="Registered Units")
             )
@@ -238,7 +252,10 @@ elif page == "Registration Trend":
                 "Products Enabled",
                 f"{len(enabled_products)} / {len(all_products)}",
             )
-            m3.metric("Years Compared", yoy_grouped["Year"].nunique())
+            m3.metric(
+                "Years Compared",
+                f"{len(selected_years)} / {len(all_years)}",
+            )
             m4.metric(
                 "Latest Month Units",
                 (
@@ -251,36 +268,41 @@ elif page == "Registration Trend":
             st.write("")
             st.subheader("Year-over-Year Comparison (Overlay by Month)")
 
-            month_order = sorted(yoy_grouped["Month_Str"].unique())
-            fig_line = px.line(
-                yoy_grouped,
-                x="Month_Str",
-                y="Registered Units",
-                color="Year",  # 按年份区分
-                markers=True,
-                color_discrete_sequence=yoy_color_sequence,  # 核心改进 2：显示定义 YoY 模式下年份的高对比度调色板！
-                category_orders={"Month_Str": month_order},
-            )
-            fig_line.update_layout(
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="left",
-                    x=0,
-                    title="Year",
-                ),
-                xaxis_title="Month",
-                yaxis_title="Registered Units",
-                hovermode="x unified",
-                height=520,
-            )
-            st.plotly_chart(fig_line, width="stretch")
+            if not yoy_grouped.empty:
+                month_order = sorted(yoy_grouped["Month_Str"].unique())
+                fig_line = px.line(
+                    yoy_grouped,
+                    x="Month_Str",
+                    y="Registered Units",
+                    color="Year",
+                    markers=True,
+                    color_discrete_sequence=yoy_color_sequence,
+                    category_orders={"Month_Str": month_order},
+                )
+                fig_line.update_layout(
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="left",
+                        x=0,
+                        title="Year",
+                    ),
+                    xaxis_title="Month",
+                    yaxis_title="Registered Units",
+                    hovermode="x unified",
+                    height=520,
+                )
+                st.plotly_chart(fig_line, width="stretch")
+            else:
+                st.warning("Please select at least one year above to compare.")
 
         else:  # By Week
-            t_df["Week_Num"] = t_df["REG_TIME"].dt.isocalendar().week
+            t_yoy_df["Week_Num"] = t_yoy_df[
+                "REG_TIME"
+            ].dt.isocalendar().week
             yoy_grouped = (
-                t_df.groupby(["Year", "Week_Num"])
+                t_yoy_df.groupby(["Year", "Week_Num"])
                 .size()
                 .reset_index(name="Registered Units")
             )
@@ -296,34 +318,41 @@ elif page == "Registration Trend":
                 "Products Enabled",
                 f"{len(enabled_products)} / {len(all_products)}",
             )
-            m3.metric("Years Compared", yoy_grouped["Year"].nunique())
+            m3.metric(
+                "Years Compared",
+                f"{len(selected_years)} / {len(all_years)}",
+            )
             m4.metric("Active Weeks", yoy_grouped["Week_Num"].nunique())
 
             st.write("")
             st.subheader("Year-over-Year Comparison (Overlay by Week)")
-            fig_line = px.line(
-                yoy_grouped,
-                x="Week_Num",
-                y="Registered Units",
-                color="Year",
-                markers=True,
-                color_discrete_sequence=yoy_color_sequence,  # 同上：赋予显式高对比色彩
-            )
-            fig_line.update_layout(
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="left",
-                    x=0,
-                    title="Year",
-                ),
-                xaxis_title="Week Number",
-                yaxis_title="Registered Units",
-                hovermode="x unified",
-                height=520,
-            )
-            st.plotly_chart(fig_line, width="stretch")
+
+            if not yoy_grouped.empty:
+                fig_line = px.line(
+                    yoy_grouped,
+                    x="Week_Num",
+                    y="Registered Units",
+                    color="Year",
+                    markers=True,
+                    color_discrete_sequence=yoy_color_sequence,
+                )
+                fig_line.update_layout(
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="left",
+                        x=0,
+                        title="Year",
+                    ),
+                    xaxis_title="Week Number",
+                    yaxis_title="Registered Units",
+                    hovermode="x unified",
+                    height=520,
+                )
+                st.plotly_chart(fig_line, width="stretch")
+            else:
+                st.warning("Please select at least one year above to compare.")
 
     else:
         # 模式 B：常规多产品趋势图
@@ -347,6 +376,7 @@ elif page == "Registration Trend":
             st.write("---")
             st.write("**Select Time Range**")
 
+            # 保留唯一的时间选择轴
             if len(all_periods) > 1:
                 start_period, end_period = st.select_slider(
                     "Filter date range:",
@@ -394,10 +424,11 @@ elif page == "Registration Trend":
                 y="Registered Units",
                 color="Product",
                 markers=True,
-                color_discrete_map=prod_color_map,  # 核心改进 3：改用 color_discrete_map，强行绑定固定色彩字典！
+                color_discrete_map=prod_color_map,
                 category_orders={"Period": sorted_unique_periods},
             )
 
+            # 优化点 1：把 rangeslider 去掉了，只依靠上面的 Slider 控制
             fig_line.update_layout(
                 legend=dict(
                     orientation="h",
@@ -415,7 +446,6 @@ elif page == "Registration Trend":
                     type="category",
                     categoryorder="array",
                     categoryarray=sorted_unique_periods,
-                    rangeslider=dict(visible=True),
                 ),
             )
             st.plotly_chart(fig_line, width="stretch")
