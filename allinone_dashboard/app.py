@@ -118,7 +118,7 @@ if page == "Home Page":
     """)
 
 # ==============================================================================
-# Module 2: Registration Trend (真正支持 Year-over-Year 同比图与常规趋势图双模式切换 + 高对比度调色)
+# Module 2: Registration Trend (锁定产品专属颜色 + 真同比模式 + 极高对比度调色盘)
 # ==============================================================================
 elif page == "Registration Trend":
     st.title("Product Registration Trend")
@@ -130,9 +130,7 @@ elif page == "Registration Trend":
     # 1. 伸缩说明提示
     with st.expander(" > Data loading notes (3)"):
         st.write("1. Only rows with valid registration timestamps are included.")
-        st.write(
-            "2. Current incomplete periods are dynamically filtered out."
-        )
+        st.write("2. Current incomplete periods are dynamically filtered out.")
         st.write(
             "3. Supports both linear trend and Year-over-Year (YoY) overlay"
             " comparison."
@@ -167,18 +165,24 @@ elif page == "Registration Trend":
             " displayed in the same chart."
         )
 
-        enabled_products = []
-        # 高对比度调色板（将容易与红色像的粉色替换为鲜艳的橙褐色 #e67e22）
-        colors = [
-            "#d9534f",
-            "#5cb85c",
-            "#5bc0de",
-            "#0275d8",
-            "#f0ad4e",
-            "#6f42c1",
-            "#e67e22",
+        # 7 种互相间区分度极强的高对比度标准色（红、绿、强天蓝、深蓝、金橙、紫、黑灰）
+        high_contrast_palette = [
+            "#e74c3c",  # 鲜红 Red
+            "#2ecc71",  # 翠绿 Green
+            "#00bc8c",  # 青绿 Teal
+            "#3498db",  # 强天蓝 Bright Blue
+            "#f39c12",  # 金橙色 Orange
+            "#9b59b6",  # 亮紫 Purple
+            "#34495e",  # 深蓝灰 Dark Grey
         ]
 
+        # 核心改进 1：建立【产品名称 -> 固有颜色】的绝对映射字典，确保选择单个产品时颜色永远不变！
+        prod_color_map = {
+            prod: high_contrast_palette[i % len(high_contrast_palette)]
+            for i, prod in enumerate(all_products)
+        }
+
+        enabled_products = []
         switch_cols = st.columns(4)
         for idx, prod_name in enumerate(all_products):
             col_target = switch_cols[idx % 4]
@@ -186,7 +190,9 @@ elif page == "Registration Trend":
                 is_on = st.toggle(prod_name, value=True, key=f"sw_{idx}")
                 if is_on:
                     enabled_products.append(prod_name)
-                color_hex = colors[idx % len(colors)]
+
+                # 显示该产品绑定的专属固定色彩指示点
+                color_hex = prod_color_map[prod_name]
                 st.markdown(
                     f"<div style='margin-top:-10px; margin-bottom:10px;"
                     f" font-size:12px; color:{color_hex};'>● Chart color</div>",
@@ -200,13 +206,20 @@ elif page == "Registration Trend":
 
     t_df["Year"] = t_df["REG_TIME"].dt.year.astype(str)
     t_df["Month_Num"] = t_df["REG_TIME"].dt.month
-    t_df["Month_Str"] = t_df["REG_TIME"].dt.strftime(
-        "%m (%b)"
-    )  # 01 (Jan), 02 (Feb)...
+    t_df["Month_Str"] = t_df["REG_TIME"].dt.strftime("%m (%b)")
 
     # 4. 根据 Trend View 模式分流构建绘图数据
     if trend_view == "Year-over-Year Comparison":
-        # 模式 A：同比对比 (YoY) -> X轴是 1-12 月，线条按 Year 区分
+        # 年份对比专属高对比调色板（按年份 2022, 2023, 2024, 2025, 2026 等强区分）
+        yoy_color_sequence = [
+            "#3498db",
+            "#e74c3c",
+            "#2ecc71",
+            "#f39c12",
+            "#9b59b6",
+            "#1abc9c",
+        ]
+
         if timebase == "By Month":
             yoy_grouped = (
                 t_df.groupby(["Year", "Month_Num", "Month_Str"])
@@ -215,7 +228,6 @@ elif page == "Registration Trend":
             )
             yoy_grouped = yoy_grouped.sort_values(["Month_Num", "Year"])
 
-            # 4个 KPI 卡片
             st.write("---")
             m1, m2, m3, m4 = st.columns(4)
             m1.metric(
@@ -244,8 +256,9 @@ elif page == "Registration Trend":
                 yoy_grouped,
                 x="Month_Str",
                 y="Registered Units",
-                color="Year",  # 按年份划不同颜色曲线
+                color="Year",  # 按年份区分
                 markers=True,
+                color_discrete_sequence=yoy_color_sequence,  # 核心改进 2：显示定义 YoY 模式下年份的高对比度调色板！
                 category_orders={"Month_Str": month_order},
             )
             fig_line.update_layout(
@@ -294,6 +307,7 @@ elif page == "Registration Trend":
                 y="Registered Units",
                 color="Year",
                 markers=True,
+                color_discrete_sequence=yoy_color_sequence,  # 同上：赋予显式高对比色彩
             )
             fig_line.update_layout(
                 legend=dict(
@@ -312,7 +326,7 @@ elif page == "Registration Trend":
             st.plotly_chart(fig_line, width="stretch")
 
     else:
-        # 模式 B：常规多产品趋势图 (Linear Registration Trend) -> X轴是时间轴，线条按 Product 区分
+        # 模式 B：常规多产品趋势图
         if timebase == "By Month":
             t_df["Period_Sort"] = t_df["REG_TIME"].dt.to_period("M")
         else:
@@ -345,7 +359,6 @@ elif page == "Registration Trend":
                     & (grouped["Period"] <= end_period)
                 ]
 
-        # 4个 KPI 卡片
         st.write("---")
         m1, m2, m3, m4 = st.columns(4)
         total_units = (
@@ -381,7 +394,7 @@ elif page == "Registration Trend":
                 y="Registered Units",
                 color="Product",
                 markers=True,
-                color_discrete_sequence=colors,
+                color_discrete_map=prod_color_map,  # 核心改进 3：改用 color_discrete_map，强行绑定固定色彩字典！
                 category_orders={"Period": sorted_unique_periods},
             )
 
@@ -407,7 +420,6 @@ elif page == "Registration Trend":
             )
             st.plotly_chart(fig_line, width="stretch")
 
-            # 5. 可折叠透视表
             st.write("")
             with st.expander("Show Trend Data", expanded=False):
                 pivot_df = (
