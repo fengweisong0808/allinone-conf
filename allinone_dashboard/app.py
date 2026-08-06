@@ -190,7 +190,7 @@ elif page == "Registration Trend":
         all_periods = sorted(grouped['Period'].unique())
         
         st.write("---")
-        st.write("🗓️ **Select Time Range / 时间范围选择**")
+        st.write("**Select Time Range**")
         
         if len(all_periods) > 1:
             start_period, end_period = st.select_slider(
