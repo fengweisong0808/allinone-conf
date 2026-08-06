@@ -14,8 +14,27 @@ st.set_page_config(page_title="asTech/AIO Operation Dashboard", layout="wide")
 @st.cache_data
 def load_data():
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    # 文件名已更新为 AIO data.xlsx
-    file_path = os.path.join(current_dir, "AIO data.xlsx")
+
+    possible_filenames = [
+        "AIO data.xlsx",
+        "aio data.xlsx",
+        "AIO_data.xlsx",
+        "aio历史数据.xlsx",
+    ]
+
+    file_path = None
+    for fname in possible_filenames:
+        temp_path = os.path.join(current_dir, fname)
+        if os.path.exists(temp_path):
+            file_path = temp_path
+            break
+
+    if file_path is None:
+        existing_files = os.listdir(current_dir)
+        raise FileNotFoundError(
+            f"Excel file not found in {current_dir}. Existing files:"
+            f" {existing_files}"
+        )
 
     df = pd.read_excel(file_path)
 
@@ -207,7 +226,7 @@ elif page == "Registration Trend":
 
     # 4. 根据 Trend View 模式分流构建绘图数据
     if trend_view == "Year-over-Year Comparison":
-        all_years = sorted(t_df["Year"].unique())
+        all_years = sorted(t_df["Year"].unique()) if not t_df.empty else []
 
         st.write("---")
         st.write("**Year Display Switches**")
@@ -228,23 +247,23 @@ elif page == "Registration Trend":
             for i, yr in enumerate(all_years)
         }
 
-        # 用 Toggle 开关生成年份选择列矩阵
         selected_years = []
-        year_cols = st.columns(min(len(all_years), 6))
-        for idx, yr_name in enumerate(all_years):
-            col_target = year_cols[idx % len(year_cols)]
-            with col_target:
-                yr_is_on = st.toggle(yr_name, value=True, key=f"yr_sw_{idx}")
-                if yr_is_on:
-                    selected_years.append(yr_name)
+        if all_years:
+            year_cols = st.columns(min(len(all_years), 6))
+            for idx, yr_name in enumerate(all_years):
+                col_target = year_cols[idx % len(year_cols)]
+                with col_target:
+                    yr_is_on = st.toggle(yr_name, value=True, key=f"yr_sw_{idx}")
+                    if yr_is_on:
+                        selected_years.append(yr_name)
 
-                yr_color_hex = year_color_map[yr_name]
-                st.markdown(
-                    f"<div style='margin-top:-10px; margin-bottom:10px;"
-                    f" font-size:12px; color:{yr_color_hex};'>● Chart"
-                    " color</div>",
-                    unsafe_allow_html=True,
-                )
+                    yr_color_hex = year_color_map[yr_name]
+                    st.markdown(
+                        f"<div style='margin-top:-10px; margin-bottom:10px;"
+                        f" font-size:12px; color:{yr_color_hex};'>● Chart"
+                        " color</div>",
+                        unsafe_allow_html=True,
+                    )
 
         t_yoy_df = t_df[t_df["Year"].isin(selected_years)].copy()
 
@@ -253,14 +272,16 @@ elif page == "Registration Trend":
                 t_yoy_df.groupby(["Year", "Month_Num", "Month_Str"])
                 .size()
                 .reset_index(name="Registered Units")
-            )
-            yoy_grouped = yoy_grouped.sort_values(["Month_Num", "Year"])
+            ) if not t_yoy_df.empty else pd.DataFrame()
+
+            if not yoy_grouped.empty:
+                yoy_grouped = yoy_grouped.sort_values(["Month_Num", "Year"])
 
             st.write("---")
             m1, m2, m3, m4 = st.columns(4)
             m1.metric(
                 "Registered Units",
-                f"{yoy_grouped['Registered Units'].sum():,}",
+                f"{yoy_grouped['Registered Units'].sum() if not yoy_grouped.empty else 0:,}",
             )
             m2.metric(
                 "Products Enabled",
@@ -309,24 +330,27 @@ elif page == "Registration Trend":
                 )
                 st.plotly_chart(fig_line, width="stretch")
             else:
-                st.warning("Please turn on at least one year switch above.")
+                st.warning("Please turn on at least one year and product switch above.")
 
         else:  # By Week
-            t_yoy_df["Week_Num"] = t_yoy_df[
-                "REG_TIME"
-            ].dt.isocalendar().week
-            yoy_grouped = (
-                t_yoy_df.groupby(["Year", "Week_Num"])
-                .size()
-                .reset_index(name="Registered Units")
-            )
-            yoy_grouped = yoy_grouped.sort_values(["Week_Num", "Year"])
+            if not t_yoy_df.empty:
+                t_yoy_df["Week_Num"] = t_yoy_df[
+                    "REG_TIME"
+                ].dt.isocalendar().week
+                yoy_grouped = (
+                    t_yoy_df.groupby(["Year", "Week_Num"])
+                    .size()
+                    .reset_index(name="Registered Units")
+                )
+                yoy_grouped = yoy_grouped.sort_values(["Week_Num", "Year"])
+            else:
+                yoy_grouped = pd.DataFrame()
 
             st.write("---")
             m1, m2, m3, m4 = st.columns(4)
             m1.metric(
                 "Registered Units",
-                f"{yoy_grouped['Registered Units'].sum():,}",
+                f"{yoy_grouped['Registered Units'].sum() if not yoy_grouped.empty else 0:,}",
             )
             m2.metric(
                 "Products Enabled",
@@ -336,7 +360,7 @@ elif page == "Registration Trend":
                 "Years Compared",
                 f"{len(selected_years)} / {len(all_years)}",
             )
-            m4.metric("Active Weeks", yoy_grouped["Week_Num"].nunique())
+            m4.metric("Active Weeks", yoy_grouped["Week_Num"].nunique() if not yoy_grouped.empty else 0)
 
             st.write("")
             st.subheader("Year-over-Year Comparison (Overlay by Week)")
@@ -366,7 +390,7 @@ elif page == "Registration Trend":
                 )
                 st.plotly_chart(fig_line, width="stretch")
             else:
-                st.warning("Please turn on at least one year switch above.")
+                st.warning("Please turn on at least one year and product switch above.")
 
     else:
         # 模式 B：常规多产品趋势图
@@ -377,14 +401,17 @@ elif page == "Registration Trend":
 
         t_df["Period"] = t_df["Period_Sort"].astype(str)
 
-        full_grouped = (
-            t_df.groupby(["Period_Sort", "Period", "Product"])
-            .size()
-            .reset_index(name="Registered Units")
-        )
-        full_grouped = full_grouped.sort_values("Period_Sort").reset_index(
-            drop=True
-        )
+        if not t_df.empty:
+            full_grouped = (
+                t_df.groupby(["Period_Sort", "Period", "Product"])
+                .size()
+                .reset_index(name="Registered Units")
+            )
+            full_grouped = full_grouped.sort_values("Period_Sort").reset_index(
+                drop=True
+            )
+        else:
+            full_grouped = pd.DataFrame()
 
         st.write("---")
         m1, m2, m3, m4 = st.columns(4)
@@ -417,10 +444,22 @@ elif page == "Registration Trend":
         if not full_grouped.empty:
             all_periods = sorted(full_grouped["Period"].unique())
 
-            if "slider_range" not in st.session_state:
-                st.session_state.slider_range = (all_periods[0], all_periods[-1])
+            # 安全滑动值解析（防崩溃逻辑）
+            if len(all_periods) == 1:
+                start_p, end_p = all_periods[0], all_periods[0]
+            else:
+                # 范围滑动控件
+                slider_val = st.select_slider(
+                    "Select Time Range",
+                    options=all_periods,
+                    value=(all_periods[0], all_periods[-1]),
+                    label_visibility="collapsed",
+                )
+                if isinstance(slider_val, (tuple, list)) and len(slider_val) == 2:
+                    start_p, end_p = slider_val
+                else:
+                    start_p, end_p = slider_val, slider_val
 
-            start_p, end_p = st.session_state.slider_range
             filtered_grouped = full_grouped[
                 (full_grouped["Period"] >= start_p)
                 & (full_grouped["Period"] <= end_p)
@@ -428,81 +467,74 @@ elif page == "Registration Trend":
 
             sorted_unique_periods = sorted(filtered_grouped["Period"].unique())
 
-            fig_line = px.line(
-                filtered_grouped,
-                x="Period",
-                y="Registered Units",
-                color="Product",
-                markers=True,
-                color_discrete_map=prod_color_map,
-                category_orders={"Period": sorted_unique_periods},
-            )
-
-            fig_line.update_layout(
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="left",
-                    x=0,
-                ),
-                xaxis_title="",
-                yaxis_title="Registered Units",
-                hovermode="x unified",
-                height=500,
-                margin=dict(l=10, r=10, t=10, b=10),
-                xaxis=dict(
-                    type="category",
-                    categoryorder="array",
-                    categoryarray=sorted_unique_periods,
-                ),
-            )
-            st.plotly_chart(fig_line, width="stretch")
-
-            # 选择时间的滑动轴贴在图表下方
-            st.write("**Select Time Range**")
-            if len(all_periods) > 1:
-                st.select_slider(
-                    "Select Time Range",
-                    options=all_periods,
-                    key="slider_range",
-                    label_visibility="collapsed",
+            if not filtered_grouped.empty:
+                fig_line = px.line(
+                    filtered_grouped,
+                    x="Period",
+                    y="Registered Units",
+                    color="Product",
+                    markers=True,
+                    color_discrete_map=prod_color_map,
+                    category_orders={"Period": sorted_unique_periods},
                 )
 
-            st.write("")
-            with st.expander("Show Trend Data", expanded=False):
-                pivot_df = (
-                    filtered_grouped.pivot(
-                        index="Period",
-                        columns="Product",
-                        values="Registered Units",
+                fig_line.update_layout(
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="left",
+                        x=0,
+                    ),
+                    xaxis_title="",
+                    yaxis_title="Registered Units",
+                    hovermode="x unified",
+                    height=500,
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    xaxis=dict(
+                        type="category",
+                        categoryorder="array",
+                        categoryarray=sorted_unique_periods,
+                    ),
+                )
+                st.plotly_chart(fig_line, width="stretch")
+
+                st.write("")
+                with st.expander("Show Trend Data", expanded=False):
+                    pivot_df = (
+                        filtered_grouped.pivot(
+                            index="Period",
+                            columns="Product",
+                            values="Registered Units",
+                        )
+                        .fillna(0)
+                        .astype(int)
                     )
-                    .fillna(0)
-                    .astype(int)
+
+                    for p in enabled_products:
+                        if p not in pivot_df.columns:
+                            pivot_df[p] = 0
+
+                    pivot_df = pivot_df[enabled_products]
+                    pivot_df["Total"] = pivot_df.sum(axis=1)
+                    pivot_df = pivot_df.reset_index()
+
+                    st.dataframe(pivot_df, width="stretch", hide_index=True)
+
+                st.caption(
+                    f"Loaded products: {len(all_products)} | Registered rows:"
+                    f" {len(df):,} | Default timebase: {timebase} | View:"
+                    f" {trend_view}"
                 )
-
-                for p in enabled_products:
-                    if p not in pivot_df.columns:
-                        pivot_df[p] = 0
-
-                pivot_df = pivot_df[enabled_products]
-                pivot_df["Total"] = pivot_df.sum(axis=1)
-                pivot_df = pivot_df.reset_index()
-
-                st.dataframe(pivot_df, width="stretch", hide_index=True)
-
-            st.caption(
-                f"Loaded products: {len(all_products)} | Registered rows:"
-                f" {len(df):,} | Default timebase: {timebase} | View:"
-                f" {trend_view}"
-            )
+            else:
+                st.warning("No data found for the selected time range.")
 
         else:
             st.warning(
                 "Please turn on at least one product switch above to view the"
                 " trend."
             )
-        
+
 # ==============================================================================
 # Module 3: Expiration & Renewal
 # ==============================================================================
@@ -571,7 +603,7 @@ elif page == "Expiration & Renewal":
     fig_exp.update_layout(
         height=450, xaxis_title="Expiration Month", yaxis_title="Units"
     )
-    st.plotly_chart(fig_exp, use_container_width=True)
+    st.plotly_chart(fig_exp, width="stretch")
 
     st.write("---")
     st.subheader("📥 Export Expiring Serial Numbers")
@@ -666,7 +698,7 @@ elif page == "Software Update & Activity":
             color="Activity_Status",
             hole=0.4,
         )
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, width="stretch")
 
     with a2:
         st.subheader("Engagement by Product Configuration")
@@ -682,7 +714,7 @@ elif page == "Software Update & Activity":
             color="Activity_Status",
             barmode="group",
         )
-        st.plotly_chart(fig_act_bar, use_container_width=True)
+        st.plotly_chart(fig_act_bar, width="stretch")
 
     st.write("---")
     st.subheader("🚨 Inactive / High Risk Devices List")
@@ -732,7 +764,7 @@ elif page == "Geographic Hotmap":
             color_continuous_scale="YlOrRd",
             text_auto=True,
         )
-        st.plotly_chart(fig_geo, use_container_width=True)
+        st.plotly_chart(fig_geo, width="stretch")
 
 # ==============================================================================
 # Module 6: Lifecycle Lead Time
@@ -783,4 +815,4 @@ elif page == "Lifecycle Lead Time":
         labels={"value": "Median Days"},
     )
     fig_lc.update_layout(height=450)
-    st.plotly_chart(fig_lc, use_container_width=True)
+    st.plotly_chart(fig_lc, width="stretch")
