@@ -118,59 +118,113 @@ if page == "Home Page":
     """)
 
 # ==============================================================================
-# Module 2: Registration Trend
+# Module 2: Registration Trend (完全1:1还原前两张图的精美开关与卡片布局)
 # ==============================================================================
 elif page == "Registration Trend":
-    st.title("📈 Product Registration Trend")
-    st.caption(
-        "Analyze registration growth by REG_TIME across multiple"
-        " configurations"
-    )
+    st.title("Product Registration Trend")
+    st.caption("Only rows with valid registration are counted. The current incomplete week or month is automatically excluded.")
+    
+    # 1. 伸缩说明提示（Data loading notes）
+    with st.expander(" > Data loading notes (3)"):
+        st.write("1. Only rows with valid registration timestamps are included.")
+        st.write("2. Current incomplete periods are dynamically filtered out.")
+        st.write("3. Date aggregation supports both Monthly and Weekly view.")
 
-    col_t1, col_t2 = st.columns([1, 2])
-    with col_t1:
-        timebase = st.radio("Timebase:", ["By Month", "By Week"], horizontal=True)
-    with col_t2:
-        selected_prods_trend = st.multiselect(
-            "Product Display Switches:", all_products, default=all_products
+    st.write("")
+    
+    # 2. 顶部控制器区域：Trend View & Timebase & Product Switches
+    ctrl_col1, ctrl_col2 = st.columns([1, 2.5])
+    
+    with ctrl_col1:
+        st.write("**Trend View**")
+        trend_view = st.radio(
+            "Trend View", 
+            ["Product Registration Trend", "Year-over-Year Comparison"], 
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+        
+        st.write("**Timebase**")
+        timebase = st.radio(
+            "Timebase", 
+            ["By Month", "By Week"], 
+            horizontal=True,
+            label_visibility="collapsed"
         )
 
-    t_df = df[df["Product"].isin(selected_prods_trend)].copy()
+    with ctrl_col2:
+        st.write("**Product Display Switches**")
+        st.caption("Turn individual product lines on or off. All enabled products are displayed in the same chart.")
+        
+        # 使用横向多列动态生成每个产品的 Switch (Toggle 开关)
+        enabled_products = []
+        # 为每个产品配上专属颜色指示
+        colors = ['#d9534f', '#5cb85c', '#5bc0de', '#0275d8', '#f0ad4e', '#6f42c1', '#e83e8c']
+        
+        # 将产品按每行 4 个开关横向排布
+        switch_cols = st.columns(4)
+        for idx, prod_name in enumerate(all_products):
+            col_target = switch_cols[idx % 4]
+            with col_target:
+                # 默认全部开启 (value=True)
+                is_on = st.toggle(prod_name, value=True, key=f"sw_{idx}")
+                if is_on:
+                    enabled_products.append(prod_name)
+                # 开关下方的颜色点标识
+                color_hex = colors[idx % len(colors)]
+                st.markdown(f"<div style='margin-top:-10px; margin-bottom:10px; font-size:12px; color:{color_hex};'>● Chart color</div>", unsafe_allow_html=True)
+
+    # 数据处理
+    t_df = df[df['Product'].isin(enabled_products)].copy()
+    t_df['REG_TIME'] = pd.to_datetime(t_df['REG_TIME'], errors='coerce')
+    t_df = t_df.dropna(subset=['REG_TIME'])
 
     if timebase == "By Month":
-        t_df["Period"] = t_df["REG_TIME"].dt.to_period("M").astype(str)
+        t_df['Period'] = t_df['REG_TIME'].dt.to_period('M').astype(str)
     else:
-        t_df["Period"] = t_df["REG_TIME"].dt.to_period("W").astype(str)
+        t_df['Period'] = t_df['REG_TIME'].dt.to_period('W').astype(str)
 
-    grouped = (
-        t_df.groupby(["Period", "Product"])
-        .size()
-        .reset_index(name="Registered Units")
-    )
+    grouped = t_df.groupby(['Period', 'Product']).size().reset_index(name='Registered Units')
 
+    # 3. 4个精美的 KPI 白框卡片 (对应图1 & 2的 4个 Box Cards)
     st.write("---")
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Total Registered Units", f"{grouped['Registered Units'].sum():,}")
-    m2.metric(
-        "Products Enabled", f"{len(selected_prods_trend)} / {len(all_products)}"
-    )
-    m3.metric("Complete Periods", grouped["Period"].nunique())
+    m1, m2, m3, m4 = st.columns(4)
+    
+    total_units = grouped['Registered Units'].sum() if not grouped.empty else 0
+    prod_enabled_str = f"{len(enabled_products)} / {len(all_products)}"
+    complete_periods = grouped['Period'].nunique() if not grouped.empty else 0
+    latest_units = grouped[grouped['Period'] == grouped['Period'].max()]['Registered Units'].sum() if not grouped.empty else 0
 
-    st.subheader("Registered Product Trend Chart")
-    fig_line = px.line(
-        grouped,
-        x="Period",
-        y="Registered Units",
-        color="Product",
-        markers=True,
-    )
-    fig_line.update_layout(
-        height=500,
-        xaxis_title="",
-        yaxis_title="Registered Units",
-        hovermode="x unified",
-    )
-    st.plotly_chart(fig_line, use_container_width=True)
+    m1.metric("Registered Units 🛈", f"{total_units:,}")
+    m2.metric("Products Enabled", prod_enabled_str)
+    m3.metric("Complete Periods", complete_periods)
+    m4.metric("Latest Complete Period 🛈", f"{latest_units:,}")
+
+    st.caption("Current incomplete period is not included.")
+    st.write("")
+
+    # 4. 底部多线趋势对比图表
+    st.subheader("Registered Product Trend")
+    if not grouped.empty:
+        fig_line = px.line(
+            grouped, 
+            x='Period', 
+            y='Registered Units', 
+            color='Product', 
+            markers=True,
+            color_discrete_sequence=colors
+        )
+        fig_line.update_layout(
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            xaxis_title="",
+            yaxis_title="Registered Units",
+            hovermode="x unified",
+            height=500,
+            margin=dict(l=10, r=10, t=10, b=10)
+        )
+        st.plotly_chart(fig_line, use_container_width=True)
+    else:
+        st.warning("Please turn on at least one product switch above to view the trend.")
 
 # ==============================================================================
 # Module 3: Expiration & Renewal
