@@ -210,10 +210,10 @@ elif page == "Registration Trend":
     complete_periods = grouped['Period'].nunique() if not grouped.empty else 0
     latest_units = grouped[grouped['Period'] == grouped['Period'].max()]['Registered Units'].sum() if not grouped.empty else 0
 
-    m1.metric("Registered Units 🛈", f"{total_units:,}")
+    m1.metric("Registered Units", f"{total_units:,}")
     m2.metric("Products Enabled", prod_enabled_str)
     m3.metric("Complete Periods", complete_periods)
-    m4.metric("Latest Complete Period 🛈", f"{latest_units:,}")
+    m4.metric("Latest Complete Period", f"{latest_units:,}")
 
     st.caption("Current incomplete period is not included.")
     st.write("")
