@@ -196,7 +196,7 @@ elif page == "Registration Trend":
                     unsafe_allow_html=True,
                 )
 
-    # 3. 数据过滤与日期提取
+    # 数据过滤与日期提取
     t_df = df[df["Product"].isin(enabled_products)].copy()
     t_df["REG_TIME"] = pd.to_datetime(t_df["REG_TIME"], errors="coerce")
     t_df = t_df.dropna(subset=["REG_TIME"])
@@ -207,32 +207,46 @@ elif page == "Registration Trend":
 
     # 4. 根据 Trend View 模式分流构建绘图数据
     if trend_view == "Year-over-Year Comparison":
-        # 获取数据中出现的所有年份，升序排列
         all_years = sorted(t_df["Year"].unique())
 
         st.write("---")
-        st.write("**Select Years to Compare**")
+        st.write("**Year Display Switches**")
+        st.caption("Turn individual years on or off for YoY comparison.")
 
-        # 优化点 2：横向选择需要对比的年份（可多选）
-        selected_years = st.multiselect(
-            "Select Years:",
-            options=all_years,
-            default=all_years,  # 默认勾选所有年份，也可自行勾选特定年份
-            label_visibility="collapsed",
-        )
-
-        # 过滤选中的年份数据
-        t_yoy_df = t_df[t_df["Year"].isin(selected_years)].copy()
-
-        yoy_color_sequence = [
-            "#3498db",
-            "#e74c3c",
-            "#2ecc71",
-            "#f39c12",
-            "#8e44ad",
-            "#1abc9c",
-            "#2c3e50",
+        yoy_color_palette = [
+            "#3498db",  # 蓝
+            "#e74c3c",  # 红
+            "#2ecc71",  # 绿
+            "#f39c12",  # 橙
+            "#8e44ad",  # 紫
+            "#1abc9c",  # 青
+            "#2c3e50",  # 灰
         ]
+
+        year_color_map = {
+            yr: yoy_color_palette[i % len(yoy_color_palette)]
+            for i, yr in enumerate(all_years)
+        }
+
+        # 用 Toggle 开关生成年份选择列矩阵
+        selected_years = []
+        year_cols = st.columns(min(len(all_years), 6))
+        for idx, yr_name in enumerate(all_years):
+            col_target = year_cols[idx % len(year_cols)]
+            with col_target:
+                yr_is_on = st.toggle(yr_name, value=True, key=f"yr_sw_{idx}")
+                if yr_is_on:
+                    selected_years.append(yr_name)
+
+                yr_color_hex = year_color_map[yr_name]
+                st.markdown(
+                    f"<div style='margin-top:-10px; margin-bottom:10px;"
+                    f" font-size:12px; color:{yr_color_hex};'>● Chart"
+                    " color</div>",
+                    unsafe_allow_html=True,
+                )
+
+        t_yoy_df = t_df[t_df["Year"].isin(selected_years)].copy()
 
         if timebase == "By Month":
             yoy_grouped = (
@@ -276,7 +290,7 @@ elif page == "Registration Trend":
                     y="Registered Units",
                     color="Year",
                     markers=True,
-                    color_discrete_sequence=yoy_color_sequence,
+                    color_discrete_map=year_color_map,
                     category_orders={"Month_Str": month_order},
                 )
                 fig_line.update_layout(
@@ -295,7 +309,7 @@ elif page == "Registration Trend":
                 )
                 st.plotly_chart(fig_line, width="stretch")
             else:
-                st.warning("Please select at least one year above to compare.")
+                st.warning("Please turn on at least one year switch above.")
 
         else:  # By Week
             t_yoy_df["Week_Num"] = t_yoy_df[
@@ -334,7 +348,7 @@ elif page == "Registration Trend":
                     y="Registered Units",
                     color="Year",
                     markers=True,
-                    color_discrete_sequence=yoy_color_sequence,
+                    color_discrete_map=year_color_map,
                 )
                 fig_line.update_layout(
                     legend=dict(
@@ -352,7 +366,7 @@ elif page == "Registration Trend":
                 )
                 st.plotly_chart(fig_line, width="stretch")
             else:
-                st.warning("Please select at least one year above to compare.")
+                st.warning("Please turn on at least one year switch above.")
 
     else:
         # 模式 B：常规多产品趋势图
@@ -363,46 +377,31 @@ elif page == "Registration Trend":
 
         t_df["Period"] = t_df["Period_Sort"].astype(str)
 
-        grouped = (
+        full_grouped = (
             t_df.groupby(["Period_Sort", "Period", "Product"])
             .size()
             .reset_index(name="Registered Units")
         )
-        grouped = grouped.sort_values("Period_Sort").reset_index(drop=True)
-
-        if not grouped.empty:
-            all_periods = sorted(grouped["Period"].unique())
-
-            st.write("---")
-            st.write("**Select Time Range**")
-
-            # 保留唯一的时间选择轴
-            if len(all_periods) > 1:
-                start_period, end_period = st.select_slider(
-                    "Filter date range:",
-                    options=all_periods,
-                    value=(all_periods[0], all_periods[-1]),
-                    label_visibility="collapsed",
-                )
-                grouped = grouped[
-                    (grouped["Period"] >= start_period)
-                    & (grouped["Period"] <= end_period)
-                ]
+        full_grouped = full_grouped.sort_values("Period_Sort").reset_index(
+            drop=True
+        )
 
         st.write("---")
         m1, m2, m3, m4 = st.columns(4)
         total_units = (
-            grouped["Registered Units"].sum() if not grouped.empty else 0
+            full_grouped["Registered Units"].sum()
+            if not full_grouped.empty
+            else 0
         )
         prod_enabled_str = f"{len(enabled_products)} / {len(all_products)}"
         complete_periods = (
-            grouped["Period"].nunique() if not grouped.empty else 0
+            full_grouped["Period"].nunique() if not full_grouped.empty else 0
         )
         latest_units = (
-            grouped[grouped["Period"] == grouped["Period"].max()][
+            full_grouped[full_grouped["Period"] == full_grouped["Period"].max()][
                 "Registered Units"
             ].sum()
-            if not grouped.empty
+            if not full_grouped.empty
             else 0
         )
 
@@ -415,11 +414,22 @@ elif page == "Registration Trend":
         st.write("")
 
         st.subheader("Registered Product Trend")
-        if not grouped.empty:
-            sorted_unique_periods = sorted(grouped["Period"].unique())
+        if not full_grouped.empty:
+            all_periods = sorted(full_grouped["Period"].unique())
+
+            if "slider_range" not in st.session_state:
+                st.session_state.slider_range = (all_periods[0], all_periods[-1])
+
+            start_p, end_p = st.session_state.slider_range
+            filtered_grouped = full_grouped[
+                (full_grouped["Period"] >= start_p)
+                & (full_grouped["Period"] <= end_p)
+            ]
+
+            sorted_unique_periods = sorted(filtered_grouped["Period"].unique())
 
             fig_line = px.line(
-                grouped,
+                filtered_grouped,
                 x="Period",
                 y="Registered Units",
                 color="Product",
@@ -428,7 +438,6 @@ elif page == "Registration Trend":
                 category_orders={"Period": sorted_unique_periods},
             )
 
-            # 优化点 1：把 rangeslider 去掉了，只依靠上面的 Slider 控制
             fig_line.update_layout(
                 legend=dict(
                     orientation="h",
@@ -440,7 +449,7 @@ elif page == "Registration Trend":
                 xaxis_title="",
                 yaxis_title="Registered Units",
                 hovermode="x unified",
-                height=530,
+                height=500,
                 margin=dict(l=10, r=10, t=10, b=10),
                 xaxis=dict(
                     type="category",
@@ -450,10 +459,20 @@ elif page == "Registration Trend":
             )
             st.plotly_chart(fig_line, width="stretch")
 
+            # 选择时间的滑动轴贴在图表下方
+            st.write("🗓️ **Select Time Range / 拖动选择时间窗口**")
+            if len(all_periods) > 1:
+                st.select_slider(
+                    "Select Time Range",
+                    options=all_periods,
+                    key="slider_range",
+                    label_visibility="collapsed",
+                )
+
             st.write("")
             with st.expander("Show Trend Data", expanded=False):
                 pivot_df = (
-                    grouped.pivot(
+                    filtered_grouped.pivot(
                         index="Period",
                         columns="Product",
                         values="Registered Units",
