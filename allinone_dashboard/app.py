@@ -69,7 +69,7 @@ US_STATE_CENTERS = {
 
 # 2. Load and Preprocess Data
 @st.cache_data(ttl=86400)
-def load_data(_version_hash="v_single_file_004"):
+def load_data(_version_hash="v_single_file_005"):
   current_dir = os.path.dirname(os.path.abspath(__file__))
 
   possible_filenames = [
@@ -625,7 +625,7 @@ elif page == "Registration Trend":
       )
 
 # ==============================================================================
-# Module 3: Registration Hotmap (删掉冗余小标题，界面极致干净)
+# Module 3: Registration Hotmap (严格按销量降序排列 Treemap + 去掉冗余小标题)
 # ==============================================================================
 elif page == "Registration Hotmap":
   st.title("Sold Units Hotmap")
@@ -750,7 +750,7 @@ elif page == "Registration Hotmap":
         else "N/A"
     )
 
-    # 上方核心 KPI 卡片，已包含 Product, Total Units, Active States, Top State
+    # 上方核心 KPI 卡片，无冗余小标题，干干净净
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Product", selected_prod)
     k2.metric("Total Sold Units", f"{total_us_units:,}")
@@ -825,13 +825,18 @@ elif page == "Registration Hotmap":
     else:
       st.info("No US state data available for the selected parameters.")
 
-  # 视角 B：全球国家等大方块填色 Treemap (使用英文国家代码 COUNTRY_CODE)
+  # 视角 B：全球国家等大方块 Treemap (使用英文国家代码 + 按销量降序严格排列)
   else:
     country_counts = (
         period_filtered_df.groupby("Country_Code_Str")
         .size()
         .reset_index(name="Sold Units")
     )
+
+    # 关键点 1：严格按销量降序排序！确保最大的 US 排在左上角，极小的排在右下角
+    country_counts = country_counts.sort_values(
+        "Sold Units", ascending=False
+    ).reset_index(drop=True)
 
     total_global_units = (
         country_counts["Sold Units"].sum() if not country_counts.empty else 0
@@ -845,9 +850,7 @@ elif page == "Registration Hotmap":
     )
 
     top_country_row = (
-        country_counts.sort_values("Sold Units", ascending=False).iloc[0]
-        if not country_counts.empty
-        else None
+        country_counts.iloc[0] if not country_counts.empty else None
     )
     top_country_name = (
         f"{top_country_row['Country_Code_Str']} ({top_country_row['Sold Units']:,})"
@@ -860,6 +863,8 @@ elif page == "Registration Hotmap":
         if total_global_units > 0
         else 0
     )
+
+    # 关键点 2：面积等大设为 1，强行保证小国家方块可见
     country_counts["Equal_Box"] = 1
 
     k1, k2, k3, k4 = st.columns(4)
@@ -874,8 +879,8 @@ elif page == "Registration Hotmap":
       fig_tree = px.treemap(
           country_counts,
           path=["Country_Code_Str"],
-          values="Equal_Box",
-          color="Sold Units",
+          values="Equal_Box",  # 面积等大
+          color="Sold Units",  # 用色阶体现真实高低
           color_continuous_scale="YlOrRd",
           custom_data=["Sold Units", "Market_Share"],
       )
