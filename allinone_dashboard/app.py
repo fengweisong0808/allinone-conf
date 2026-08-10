@@ -537,13 +537,12 @@ elif page == "Registration Trend":
             )
 
 # ==============================================================================
-# Module 3: Registration Hotmap (全新 1:1 还原参考图的美国/全球双视角热力图)
+# Module 3: Registration Hotmap (安全列校验版本)
 # ==============================================================================
 elif page == "Registration Hotmap":
     st.title("Sold Units Hotmap")
     st.caption("Interactive regional heatmaps and product distribution")
 
-    # 1. 顶部控制栏：产品选择 + 地理视角选择 (US / Global)
     col_h1, col_h2 = st.columns([2, 1])
 
     with col_h1:
@@ -564,8 +563,33 @@ elif page == "Registration Hotmap":
             label_visibility="collapsed",
         )
 
-    # 2. 数据过滤与时间选择
     h_df = df.copy()
+
+    # 安全补全 US_State_Code 列（防止缓存未及时刷新引发 KeyError）
+    if "US_State_Code" not in h_df.columns:
+        us_state_abbrev = {
+            "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR",
+            "California": "CA", "Colorado": "CO", "Connecticut": "CT", "Delaware": "DE",
+            "Florida": "FL", "Georgia": "GA", "Hawaii": "HI", "Idaho": "ID",
+            "Illinois": "IL", "Indiana": "IN", "Iowa": "IA", "Kansas": "KS",
+            "Kentucky": "KY", "Louisiana": "LA", "Maine": "ME", "Maryland": "MD",
+            "Massachusetts": "MA", "Michigan": "MI", "Minnesota": "MN", "Mississippi": "MS",
+            "Missouri": "MO", "Montana": "MT", "Nebraska": "NE", "Nevada": "NV",
+            "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM", "New York": "NY",
+            "North Carolina": "NC", "North Dakota": "ND", "Ohio": "OH", "Oklahoma": "OK",
+            "Oregon": "OR", "Pennsylvania": "PA", "Rhode Island": "RI", "South Carolina": "SC",
+            "South Dakota": "SD", "Tennessee": "TN", "Texas": "TX", "Utah": "UT",
+            "Vermont": "VT", "Virginia": "VA", "Washington": "WA", "West Virginia": "WV",
+            "Wisconsin": "WI", "Wyoming": "WY", "District of Columbia": "DC"
+        }
+        if "STATE" in h_df.columns:
+            st_col = h_df["STATE"]
+        elif "PROVINCE" in h_df.columns:
+            st_col = h_df["PROVINCE"]
+        else:
+            st_col = h_df["COUNTRY_CN"].apply(lambda x: "CA" if x in ["美国", "USA", "United States"] else "Other")
+        h_df["US_State_Code"] = st_col.map(lambda x: us_state_abbrev.get(str(x).strip(), str(x).strip().upper()))
+
     if selected_prod != "All Products":
         h_df = h_df[h_df["Product"] == selected_prod]
 
@@ -582,7 +606,7 @@ elif page == "Registration Hotmap":
             sel_period = st.select_slider(
                 "Timeline Slider",
                 options=all_map_periods,
-                value=all_map_periods[-1],  # 默认展示最新月份
+                value=all_map_periods[-1],
                 label_visibility="collapsed",
             )
         else:
@@ -595,23 +619,23 @@ elif page == "Registration Hotmap":
 
     st.write("")
 
-    # 3. 视图 A：美国各州精细热力图 (United States By State)
     if geo_scope == "United States (By State)":
         us_df = period_filtered_df[
             period_filtered_df["COUNTRY_CN"].isin(["美国", "USA", "United States"])
         ].copy()
 
-        # 按 2 字母州代码统计
         state_counts = (
             us_df.groupby("US_State_Code")
             .size()
             .reset_index(name="Sold Units")
         )
 
-        total_us_units = state_counts["Sold Units"].sum()
-        active_states_cnt = state_counts[state_counts["Sold Units"] > 0][
-            "US_State_Code"
-        ].nunique()
+        total_us_units = state_counts["Sold Units"].sum() if not state_counts.empty else 0
+        active_states_cnt = (
+            state_counts[state_counts["Sold Units"] > 0]["US_State_Code"].nunique()
+            if not state_counts.empty
+            else 0
+        )
 
         top_state_row = (
             state_counts.sort_values("Sold Units", ascending=False).iloc[0]
@@ -624,7 +648,6 @@ elif page == "Registration Hotmap":
             else "N/A"
         )
 
-        # 4 个精致 KPI 卡片 (匹配截图卡片风格)
         k1, k2, k3, k4 = st.columns(4)
         k1.metric("Product", selected_prod)
         k2.metric("Total Sold Units", f"{total_us_units:,}")
@@ -635,18 +658,16 @@ elif page == "Registration Hotmap":
         st.subheader(f"{selected_prod} Sold Units Hotmap ({sel_period})")
 
         if not state_counts.empty:
-            # 绘制 Plotly 美国州级 Choropleth 地图
             fig_map = px.choropleth(
                 state_counts,
                 locations="US_State_Code",
                 locationmode="USA-states",
                 color="Sold Units",
                 scope="usa",
-                color_continuous_scale="YlOrRd",  # 匹配截图中的黄-橙-深红渐变配色
+                color_continuous_scale="YlOrRd",
                 labels={"Sold Units": "Sold Units"},
             )
 
-            # 在地图上添加各州的数值文本标注（匹配截图上直接显示数值）
             fig_map.update_traces(
                 text=state_counts["Sold Units"],
                 hovertemplate="<b>State: %{location}</b><br>Sold Units: %{z:,}<extra></extra>",
@@ -665,7 +686,6 @@ elif page == "Registration Hotmap":
         else:
             st.info("No US state data available for the selected parameters.")
 
-    # 视图 B：全球国家热力图 (Global By Country)
     else:
         country_counts = (
             period_filtered_df.groupby("COUNTRY_CN")
@@ -673,10 +693,12 @@ elif page == "Registration Hotmap":
             .reset_index(name="Sold Units")
         )
 
-        total_global_units = country_counts["Sold Units"].sum()
-        active_countries_cnt = country_counts[country_counts["Sold Units"] > 0][
-            "COUNTRY_CN"
-        ].nunique()
+        total_global_units = country_counts["Sold Units"].sum() if not country_counts.empty else 0
+        active_countries_cnt = (
+            country_counts[country_counts["Sold Units"] > 0]["COUNTRY_CN"].nunique()
+            if not country_counts.empty
+            else 0
+        )
 
         top_country_row = (
             country_counts.sort_values("Sold Units", ascending=False).iloc[0]
