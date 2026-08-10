@@ -14,9 +14,9 @@ from ip_processor import process_us_ip_to_state
 st.set_page_config(page_title="asTech/AIO Operation Dashboard", layout="wide")
 
 
-# 2. Load and Preprocess Data (自动调用 ip_processor 处理原始 IP 列)
-@st.cache_data(ttl=86400)  # 自动缓存 24 小时
-def load_data():
+# 2. Load and Preprocess Data (强行跳过旧缓存，重新执行 ip_processor)
+@st.cache_data(ttl=86400)
+def load_data(_version_hash="v_force_refresh_001"):
   current_dir = os.path.dirname(os.path.abspath(__file__))
 
   possible_filenames = [
@@ -236,13 +236,13 @@ elif page == "Registration Trend":
     st.caption("Turn individual years on or off for YoY comparison.")
 
     yoy_color_palette = [
-        "#3498db",
-        "#e74c3c",
-        "#2ecc71",
-        "#f39c12",
-        "#8e44ad",
-        "#1abc9c",
-        "#2c3e50",
+        "#3498db",  # 蓝
+        "#e74c3c",  # 红
+        "#2ecc71",  # 绿
+        "#f39c12",  # 橙
+        "#8e44ad",  # 紫
+        "#1abc9c",  # 青
+        "#2c3e50",  # 灰
     ]
 
     year_color_map = {
@@ -538,7 +538,7 @@ elif page == "Registration Trend":
       )
 
 # ==============================================================================
-# Module 3: Registration Hotmap (通过 ip_processor 自动解析原始 IP 列)
+# Module 3: Registration Hotmap (强行重新调取 ip_processor 处理原始 IP 列)
 # ==============================================================================
 elif page == "Registration Hotmap":
   st.title("Sold Units Hotmap")
@@ -576,7 +576,7 @@ elif page == "Registration Hotmap":
             "Cumulative Up To (截至当前月累加)",
             "Single Month Only (仅当月新增)",
         ],
-        index=0,  # 默认全量，打开即展现几千条数据
+        index=0,
         label_visibility="collapsed",
     )
 
