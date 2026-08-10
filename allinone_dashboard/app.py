@@ -73,16 +73,16 @@ def load_data():
 df = load_data()
 all_products = list(df["Product"].dropna().unique())
 
-# 3. Sidebar Navigation
-st.sidebar.title("📌 Navigation")
+# 3. Sidebar Navigation (按新顺序排列)
+st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Select Page",
     [
         "Home Page",
         "Registration Trend",
+        "Registration Hotmap",
         "Expiration & Renewal",
         "Software Update & Activity",
-        "Geographic Hotmap",
         "Lifecycle Lead Time",
     ],
     index=0,
@@ -128,9 +128,9 @@ if page == "Home Page":
     All operational modules and analytical charts are neatly organized in the sidebar menu on the left:
     
     * **Registration Trend**: Multi-product registration growth over time.
+    * **Registration Hotmap**: View global & regional device distribution.
     * **Expiration & Renewal**: Track upcoming software expiration dates and export targeted marketing lists.
     * **Software Update & Activity**: Monitor user engagement and inactive device risks.
-    * **Geographic Hotmap**: View global & regional device distribution.
     * **Lifecycle Lead Time**: Measure production, sale, and activation delays.
     
     *Please click any menu item on the left to start exploring.*
@@ -224,7 +224,7 @@ elif page == "Registration Trend":
     t_df["Month_Num"] = t_df["REG_TIME"].dt.month
     t_df["Month_Str"] = t_df["REG_TIME"].dt.strftime("%m (%b)")
 
-    # 4. 根据 Trend View 模式分流构建绘图数据
+    # 根据 Trend View 模式分流构建绘图数据
     if trend_view == "Year-over-Year Comparison":
         all_years = sorted(t_df["Year"].unique()) if not t_df.empty else []
 
@@ -269,10 +269,14 @@ elif page == "Registration Trend":
 
         if timebase == "By Month":
             yoy_grouped = (
-                t_yoy_df.groupby(["Year", "Month_Num", "Month_Str"])
-                .size()
-                .reset_index(name="Registered Units")
-            ) if not t_yoy_df.empty else pd.DataFrame()
+                (
+                    t_yoy_df.groupby(["Year", "Month_Num", "Month_Str"])
+                    .size()
+                    .reset_index(name="Registered Units")
+                )
+                if not t_yoy_df.empty
+                else pd.DataFrame()
+            )
 
             if not yoy_grouped.empty:
                 yoy_grouped = yoy_grouped.sort_values(["Month_Num", "Year"])
@@ -334,9 +338,7 @@ elif page == "Registration Trend":
 
         else:  # By Week
             if not t_yoy_df.empty:
-                t_yoy_df["Week_Num"] = t_yoy_df[
-                    "REG_TIME"
-                ].dt.isocalendar().week
+                t_yoy_df["Week_Num"] = t_yoy_df["REG_TIME"].dt.isocalendar().week
                 yoy_grouped = (
                     t_yoy_df.groupby(["Year", "Week_Num"])
                     .size()
@@ -360,7 +362,10 @@ elif page == "Registration Trend":
                 "Years Compared",
                 f"{len(selected_years)} / {len(all_years)}",
             )
-            m4.metric("Active Weeks", yoy_grouped["Week_Num"].nunique() if not yoy_grouped.empty else 0)
+            m4.metric(
+                "Active Weeks",
+                yoy_grouped["Week_Num"].nunique() if not yoy_grouped.empty else 0,
+            )
 
             st.write("")
             st.subheader("Year-over-Year Comparison (Overlay by Week)")
@@ -416,9 +421,7 @@ elif page == "Registration Trend":
         st.write("---")
         m1, m2, m3, m4 = st.columns(4)
         total_units = (
-            full_grouped["Registered Units"].sum()
-            if not full_grouped.empty
-            else 0
+            full_grouped["Registered Units"].sum() if not full_grouped.empty else 0
         )
         prod_enabled_str = f"{len(enabled_products)} / {len(all_products)}"
         complete_periods = (
@@ -444,11 +447,9 @@ elif page == "Registration Trend":
         if not full_grouped.empty:
             all_periods = sorted(full_grouped["Period"].unique())
 
-            # 安全滑动值解析（防崩溃逻辑）
             if len(all_periods) == 1:
                 start_p, end_p = all_periods[0], all_periods[0]
             else:
-                # 范围滑动控件
                 slider_val = st.select_slider(
                     "Select Time Range",
                     options=all_periods,
@@ -536,7 +537,36 @@ elif page == "Registration Trend":
             )
 
 # ==============================================================================
-# Module 3: Expiration & Renewal
+# Module 3: Geographic Hotmap (调至第 3 模块)
+# ==============================================================================
+elif page == "Registration Hotmap":
+    st.title("🗺️ Geographic Distribution & Hotmap")
+    st.caption(
+        "Analyze device activations geographically based on PDT_REG_IP &"
+        " COUNTRY_CN"
+    )
+
+    country_counts = df["COUNTRY_CN"].value_counts().reset_index()
+    country_counts.columns = ["Country", "Units"]
+
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        st.subheader("Top Active Countries")
+        st.dataframe(country_counts.head(10))
+    with c2:
+        st.subheader("Registration Distribution by Country")
+        fig_geo = px.bar(
+            country_counts.head(10),
+            x="Country",
+            y="Units",
+            color="Units",
+            color_continuous_scale="YlOrRd",
+            text_auto=True,
+        )
+        st.plotly_chart(fig_geo, width="stretch")
+
+# ==============================================================================
+# Module 4: Expiration & Renewal (调至第 4 模块)
 # ==============================================================================
 elif page == "Expiration & Renewal":
     st.title("⏳ Monthly Renewal / Expiration Histogram")
@@ -658,7 +688,7 @@ elif page == "Expiration & Renewal":
     )
 
 # ==============================================================================
-# Module 4: Software Update & Activity
+# Module 5: Software Update & Activity (调至第 5 模块)
 # ==============================================================================
 elif page == "Software Update & Activity":
     st.title("🔄 Software Update & User Engagement")
@@ -736,35 +766,6 @@ elif page == "Software Update & Activity":
             ]
         ]
     )
-
-# ==============================================================================
-# Module 5: Geographic Hotmap
-# ==============================================================================
-elif page == "Geographic Hotmap":
-    st.title("🗺️ Geographic Distribution & Hotmap")
-    st.caption(
-        "Analyze device activations geographically based on PDT_REG_IP &"
-        " COUNTRY_CN"
-    )
-
-    country_counts = df["COUNTRY_CN"].value_counts().reset_index()
-    country_counts.columns = ["Country", "Units"]
-
-    c1, c2 = st.columns([1, 2])
-    with c1:
-        st.subheader("Top Active Countries")
-        st.dataframe(country_counts.head(10))
-    with c2:
-        st.subheader("Registration Distribution by Country")
-        fig_geo = px.bar(
-            country_counts.head(10),
-            x="Country",
-            y="Units",
-            color="Units",
-            color_continuous_scale="YlOrRd",
-            text_auto=True,
-        )
-        st.plotly_chart(fig_geo, width="stretch")
 
 # ==============================================================================
 # Module 6: Lifecycle Lead Time
