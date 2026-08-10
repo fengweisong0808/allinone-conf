@@ -655,13 +655,13 @@ elif page == "Registration Hotmap":
   col_mode1, col_mode2 = st.columns([1, 2])
 
   with col_mode1:
-    st.write("**Data Calculation Mode / 数据计算模式**")
+    st.write("**Data Calculation Mode**")
     calc_mode = st.radio(
         "Calculation Mode",
         [
-            "All Time Cumulative (历史全量总计)",
-            "Cumulative Up To (截至当前月累加)",
-            "Single Month Only (仅当月新增)",
+            "All Time Cumulative",
+            "Cumulative Up To",
+            "Single Month Only",
         ],
         index=0,
         label_visibility="collapsed",
@@ -678,7 +678,7 @@ elif page == "Registration Hotmap":
 
   all_map_periods = sorted(h_df["Period"].unique())
 
-  if calc_mode == "All Time Cumulative (历史全量总计)":
+  if calc_mode == "All Time Cumulative":
     sel_period = (
         f"All Time ({all_map_periods[0]} ~ {all_map_periods[-1]})"
         if all_map_periods
@@ -686,7 +686,7 @@ elif page == "Registration Hotmap":
     )
     period_filtered_df = h_df
 
-  elif calc_mode == "Cumulative Up To (截至当前月累加)":
+  elif calc_mode == "Cumulative Up To":
     with col_mode2:
       st.caption("Timeline Slider (Cumulative from start to selected month)")
       if len(all_map_periods) > 1:
