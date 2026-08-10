@@ -69,7 +69,7 @@ US_STATE_CENTERS = {
 
 # 2. Load and Preprocess Data
 @st.cache_data(ttl=86400)
-def load_data(_version_hash="v_single_file_002"):
+def load_data(_version_hash="v_single_file_003"):
   current_dir = os.path.dirname(os.path.abspath(__file__))
 
   possible_filenames = [
@@ -123,6 +123,14 @@ def load_data(_version_hash="v_single_file_002"):
   df["REG_TIME"] = pd.to_datetime(df["REG_TIME"], errors="coerce")
   df["UPDATE_TIME"] = pd.to_datetime(df["UPDATE_TIME"], errors="coerce")
   df["FREE_END_TIME"] = pd.to_datetime(df["FREE_END_TIME"], errors="coerce")
+
+  # 规范国家英文代码列
+  if "COUNTRY_CODE" in df.columns:
+    df["Country_Code_Str"] = (
+        df["COUNTRY_CODE"].fillna("Unknown").astype(str).str.upper()
+    )
+  else:
+    df["Country_Code_Str"] = df["COUNTRY_CN"].fillna("Unknown").astype(str)
 
   # 纯代码直接读取原始 PDT_REG_IP 并解析美国各州代码
   us_mask = df["COUNTRY_CN"].isin(["美国", "USA", "United States"])
@@ -617,7 +625,7 @@ elif page == "Registration Trend":
       )
 
 # ==============================================================================
-# Module 3: Registration Hotmap (全新：支持全直显数字 USA 地图 + Global Treemap 矩形树图)
+# Module 3: Registration Hotmap (优化版小标题 + Treemap等大方块填色 + 英文国家代码)
 # ==============================================================================
 elif page == "Registration Hotmap":
   st.title("Sold Units Hotmap")
@@ -752,7 +760,6 @@ elif page == "Registration Hotmap":
     st.subheader(f"{selected_prod} Sold Units Hotmap ({sel_period})")
 
     if not state_counts.empty:
-      # 准备各州中心点的文本标注数据
       lats, lons, text_labels = [], [], []
       for _, row in state_counts.iterrows():
         st_code = str(row["US_State_Code"]).strip()
@@ -762,7 +769,6 @@ elif page == "Registration Hotmap":
           lons.append(US_STATE_CENTERS[st_code]["lon"])
           text_labels.append(f"{units_val:,}")
 
-      # 底图：Choropleth US-states 热力填充
       fig_map = px.choropleth(
           state_counts,
           locations="US_State_Code",
@@ -773,7 +779,6 @@ elif page == "Registration Hotmap":
           labels={"Sold Units": "Sold Units"},
       )
 
-      # 增加 Scattergeo 图层：1:1 还原参考图将数字直接标在各个州上
       fig_map.add_trace(
           go.Scattergeo(
               locationmode="USA-states",
@@ -787,7 +792,6 @@ elif page == "Registration Hotmap":
           )
       )
 
-      # 增加右下角置顶数据卡片（完全还原参考图样式）
       fig_map.add_annotation(
           text=(
               f"<b>Total Sold Units</b><br><span"
@@ -821,10 +825,10 @@ elif page == "Registration Hotmap":
     else:
       st.info("No US state data available for the selected parameters.")
 
-  # 视角 B：全球国家正方形占比图 (Global Country Treemap)
+  # 视角 B：全球国家等大方块填色 Treemap (使用英文国家代码 COUNTRY_CODE)
   else:
     country_counts = (
-        period_filtered_df.groupby("COUNTRY_CN")
+        period_filtered_df.groupby("Country_Code_Str")
         .size()
         .reset_index(name="Sold Units")
     )
@@ -833,7 +837,9 @@ elif page == "Registration Hotmap":
         country_counts["Sold Units"].sum() if not country_counts.empty else 0
     )
     active_countries_cnt = (
-        country_counts[country_counts["Sold Units"] > 0]["COUNTRY_CN"].nunique()
+        country_counts[country_counts["Sold Units"] > 0][
+            "Country_Code_Str"
+        ].nunique()
         if not country_counts.empty
         else 0
     )
@@ -844,10 +850,20 @@ elif page == "Registration Hotmap":
         else None
     )
     top_country_name = (
-        f"{top_country_row['COUNTRY_CN']} ({top_country_row['Sold Units']:,})"
+        f"{top_country_row['Country_Code_Str']} ({top_country_row['Sold Units']:,})"
         if top_country_row is not None
         else "N/A"
     )
+
+    # 计算真实份额百分比供悬浮显示
+    country_counts["Market_Share"] = (
+        country_counts["Sold Units"] / total_global_units
+        if total_global_units > 0
+        else 0
+    )
+
+    # 关键改进：设置等值大小列 (Equal_Box)，强制使所有小国家占有可见的同等方块大小！
+    country_counts["Equal_Box"] = 1
 
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Product", selected_prod)
@@ -856,24 +872,27 @@ elif page == "Registration Hotmap":
     k4.metric("Top Country", top_country_name)
 
     st.write("---")
-    st.subheader(
-        f"Global Market Share Distribution (Treemap View - {sel_period})"
-    )
+
+    # 优化后的精简小标题
+    st.subheader(f"Global Distribution ({sel_period})")
 
     if not country_counts.empty:
-      # 绘制 Treemap 矩形占比图（正方形/矩形总表展现各国份额）
       fig_tree = px.treemap(
           country_counts,
-          path=["COUNTRY_CN"],
-          values="Sold Units",
-          color="Sold Units",
+          path=["Country_Code_Str"],  # 使用英文国家缩写代号 (US, GB, ES, IT...)
+          values="Equal_Box",  # 方块面积等大，确保小国家清晰可见
+          color="Sold Units",  # 用颜色深浅直观代表销量高低
           color_continuous_scale="YlOrRd",
-          title=f"Global Country Share ({sel_period})",
+          custom_data=["Sold Units", "Market_Share"],
       )
 
+      # 标签内部格式：显示英文国家代码 + 销售台数
       fig_tree.update_traces(
-          textinfo="label+value+percent entry",
-          hovertemplate="<b>Country: %{label}</b><br>Sold Units: %{value:,}<br>Share: %{percentEntry:.2%}<extra></extra>",
+          texttemplate="<b>%{label}</b><br>%{customdata[0]:,} units",
+          hovertemplate=(
+              "<b>Country: %{label}</b><br>Sold Units:"
+              " %{customdata[0]:,}<br>Global Share: %{customdata[1]:.2%}<extra></extra>"
+          ),
       )
 
       fig_tree.update_layout(
