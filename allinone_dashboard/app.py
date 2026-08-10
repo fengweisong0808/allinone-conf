@@ -5,23 +5,25 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import requests
 import streamlit as st
+
+# 嵌套导入专门跑 IP 数据的独立模块
+from ip_processor import process_us_ip_to_state
 
 # 1. Page Configuration
 st.set_page_config(page_title="asTech/AIO Operation Dashboard", layout="wide")
 
 
-# 2. Load and Preprocess Data (加入云端自动 IP 归属州解析与缓存机制)
-@st.cache_data(ttl=86400)  # 缓存 24 小时
+# 2. Load and Preprocess Data (自动调用 ip_processor 处理原始 IP 列)
+@st.cache_data(ttl=86400)  # 自动缓存 24 小时
 def load_data():
   current_dir = os.path.dirname(os.path.abspath(__file__))
 
   possible_filenames = [
+      "AIO data_2.xlsx",
       "AIO data.xlsx",
       "aio data.xlsx",
       "AIO_data.xlsx",
-      "aio历史数据.xlsx",
   ]
 
   file_path = None
@@ -69,31 +71,8 @@ def load_data():
   df["UPDATE_TIME"] = pd.to_datetime(df["UPDATE_TIME"], errors="coerce")
   df["FREE_END_TIME"] = pd.to_datetime(df["FREE_END_TIME"], errors="coerce")
 
-  # 自动在云端通过批量接口解析美国 IP 对应的州简称 (CA, TX, NY 等)
-  us_mask = df["COUNTRY_CN"].isin(["美国", "USA", "United States"])
-  if us_mask.any():
-    us_ips = df.loc[us_mask, "PDT_REG_IP"].dropna().unique()
-    ip_to_state = {}
-
-    # 使用免费批量 IP 解析接口（100个/包，几秒内即可解析完全部 IP）
-    batch_size = 100
-    for i in range(0, len(us_ips), batch_size):
-      chunk = us_ips[i : i + batch_size].tolist()
-      try:
-        url = "http://ip-api.com/batch?fields=query,status,region"
-        res = requests.post(url, json=chunk, timeout=5).json()
-        for item in res:
-          if item.get("status") == "success" and item.get("region"):
-            ip_to_state[item["query"]] = item["region"]
-      except Exception:
-        pass
-
-    # 映射回 DataFrame
-    df["US_State_Code"] = df["PDT_REG_IP"].map(
-        lambda ip: ip_to_state.get(ip, "CA")
-    )
-  else:
-    df["US_State_Code"] = "CA"
+  # 纯代码读取原始 PDT_REG_IP 解析出美国各个州代码
+  df = process_us_ip_to_state(df)
 
   return df
 
@@ -139,7 +118,7 @@ if page == "Home Page":
   col1, col2, col3 = st.columns(3)
   with col1:
     st.caption("Data Source")
-    st.subheader("AIO data.xlsx")
+    st.subheader("AIO Data")
   with col2:
     st.caption("Total Records")
     st.subheader(f"{len(df):,} Rows")
@@ -257,13 +236,13 @@ elif page == "Registration Trend":
     st.caption("Turn individual years on or off for YoY comparison.")
 
     yoy_color_palette = [
-        "#3498db",  # 蓝
-        "#e74c3c",  # 红
-        "#2ecc71",  # 绿
-        "#f39c12",  # 橙
-        "#8e44ad",  # 紫
-        "#1abc9c",  # 青
-        "#2c3e50",  # 灰
+        "#3498db",
+        "#e74c3c",
+        "#2ecc71",
+        "#f39c12",
+        "#8e44ad",
+        "#1abc9c",
+        "#2c3e50",
     ]
 
     year_color_map = {
@@ -559,238 +538,221 @@ elif page == "Registration Trend":
       )
 
 # ==============================================================================
-# Module 3: Registration Hotmap (支持全量/按月/截至当前月累加 3种动态模式)
+# Module 3: Registration Hotmap (通过 ip_processor 自动解析原始 IP 列)
 # ==============================================================================
 elif page == "Registration Hotmap":
-    st.title("Sold Units Hotmap")
-    st.caption("Interactive regional heatmaps and product distribution")
+  st.title("Sold Units Hotmap")
+  st.caption("Interactive regional heatmaps and product distribution")
 
-    # 1. 顶部控制器：产品选择 + 视图选择 (United States / Global)
-    col_h1, col_h2 = st.columns([2, 1])
+  col_h1, col_h2 = st.columns([2, 1])
 
-    with col_h1:
-        st.write("**Product Selection**")
-        selected_prod = st.radio(
-            "Product Selection",
-            ["All Products"] + all_products,
-            horizontal=True,
+  with col_h1:
+    st.write("**Product Selection**")
+    selected_prod = st.radio(
+        "Product Selection",
+        ["All Products"] + all_products,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+  with col_h2:
+    st.write("**Geographic View**")
+    geo_scope = st.radio(
+        "Geographic View",
+        ["United States (By State)", "Global (By Country)"],
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+  st.write("---")
+  col_mode1, col_mode2 = st.columns([1, 2])
+
+  with col_mode1:
+    st.write("**Data Calculation Mode / 数据计算模式**")
+    calc_mode = st.radio(
+        "Calculation Mode",
+        [
+            "All Time Cumulative (历史全量总计)",
+            "Cumulative Up To (截至当前月累加)",
+            "Single Month Only (仅当月新增)",
+        ],
+        index=0,  # 默认全量，打开即展现几千条数据
+        label_visibility="collapsed",
+    )
+
+  h_df = df.copy()
+
+  if selected_prod != "All Products":
+    h_df = h_df[h_df["Product"] == selected_prod]
+
+  h_df["REG_TIME"] = pd.to_datetime(h_df["REG_TIME"], errors="coerce")
+  h_df = h_df.dropna(subset=["REG_TIME"])
+  h_df["Period"] = h_df["REG_TIME"].dt.to_period("M").astype(str)
+
+  all_map_periods = sorted(h_df["Period"].unique())
+
+  if calc_mode == "All Time Cumulative (历史全量总计)":
+    sel_period = (
+        f"All Time ({all_map_periods[0]} ~ {all_map_periods[-1]})"
+        if all_map_periods
+        else "All Time"
+    )
+    period_filtered_df = h_df
+
+  elif calc_mode == "Cumulative Up To (截至当前月累加)":
+    with col_mode2:
+      st.caption("Timeline Slider (Cumulative from start to selected month)")
+      if len(all_map_periods) > 1:
+        target_month = st.select_slider(
+            "Timeline Slider",
+            options=all_map_periods,
+            value=all_map_periods[-1],
             label_visibility="collapsed",
         )
+      else:
+        target_month = all_map_periods[0] if all_map_periods else "N/A"
 
-    with col_h2:
-        st.write("**Geographic View**")
-        geo_scope = st.radio(
-            "Geographic View",
-            ["United States (By State)", "Global (By Country)"],
-            horizontal=True,
+      sel_period = f"Cumulative Up To {target_month}"
+      period_filtered_df = h_df[h_df["Period"] <= target_month]
+
+  else:  # Single Month Only
+    with col_mode2:
+      st.caption("Timeline Slider (Filters data for selected month only)")
+      if len(all_map_periods) > 1:
+        target_month = st.select_slider(
+            "Timeline Slider",
+            options=all_map_periods,
+            value=all_map_periods[-1],
             label_visibility="collapsed",
         )
+      else:
+        target_month = all_map_periods[0] if all_map_periods else "N/A"
 
-    # 2. 时间过滤模式切换控制器
+      sel_period = f"Single Month: {target_month}"
+      period_filtered_df = h_df[h_df["Period"] == target_month]
+
+  st.write("")
+
+  if geo_scope == "United States (By State)":
+    us_df = period_filtered_df[
+        period_filtered_df["COUNTRY_CN"].isin(["美国", "USA", "United States"])
+    ].copy()
+
+    state_counts = (
+        us_df.groupby("US_State_Code").size().reset_index(name="Sold Units")
+    )
+
+    total_us_units = (
+        state_counts["Sold Units"].sum() if not state_counts.empty else 0
+    )
+    active_states_cnt = (
+        state_counts[state_counts["Sold Units"] > 0]["US_State_Code"].nunique()
+        if not state_counts.empty
+        else 0
+    )
+
+    top_state_row = (
+        state_counts.sort_values("Sold Units", ascending=False).iloc[0]
+        if not state_counts.empty
+        else None
+    )
+    top_state_name = (
+        f"{top_state_row['US_State_Code']} ({top_state_row['Sold Units']:,})"
+        if top_state_row is not None
+        else "N/A"
+    )
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Product", selected_prod)
+    k2.metric("Total Sold Units", f"{total_us_units:,}")
+    k3.metric("Active States", f"{active_states_cnt}")
+    k4.metric("Top State", top_state_name)
+
     st.write("---")
-    col_mode1, col_mode2 = st.columns([1, 2])
+    st.subheader(f"{selected_prod} Sold Units Hotmap ({sel_period})")
 
-    with col_mode1:
-        st.write("**Data Calculation Mode / 数据计算模式**")
-        calc_mode = st.radio(
-            "Calculation Mode",
-            [
-                "All Time Cumulative (历史全量总计)",
-                "Cumulative Up To (截至当前月累加)",
-                "Single Month Only (仅当月新增)",
-            ],
-            index=1,  # 默认选中截至当前月累加
-            label_visibility="collapsed",
-        )
+    if not state_counts.empty:
+      fig_map = px.choropleth(
+          state_counts,
+          locations="US_State_Code",
+          locationmode="USA-states",
+          color="Sold Units",
+          scope="usa",
+          color_continuous_scale="YlOrRd",
+          labels={"Sold Units": "Sold Units"},
+      )
 
-    h_df = df.copy()
-    if selected_prod != "All Products":
-        h_df = h_df[h_df["Product"] == selected_prod]
+      fig_map.update_traces(
+          hovertemplate=(
+              "<b>State: %{location}</b><br>Sold Units: %{z:,}<extra></extra>"
+          )
+      )
 
-    h_df["REG_TIME"] = pd.to_datetime(h_df["REG_TIME"], errors="coerce")
-    h_df = h_df.dropna(subset=["REG_TIME"])
-    h_df["Period"] = h_df["REG_TIME"].dt.to_period("M").astype(str)
-
-    all_map_periods = sorted(h_df["Period"].unique())
-
-    # 根据选中的模式计算 period_filtered_df
-    if calc_mode == "All Time Cumulative (历史全量总计)":
-        sel_period = f"All Time ({all_map_periods[0]} ~ {all_map_periods[-1]})"
-        period_filtered_df = h_df
-
-    elif calc_mode == "Cumulative Up To (截至当前月累加)":
-        with col_mode2:
-            st.caption(
-                "Timeline Slider (Calculates cumulative data from start to"
-                " selected month)"
-            )
-            if len(all_map_periods) > 1:
-                target_month = st.select_slider(
-                    "Timeline Slider",
-                    options=all_map_periods,
-                    value=all_map_periods[-1],  # 默认最晚月份
-                    label_visibility="collapsed",
-                )
-            else:
-                target_month = all_map_periods[0]
-
-            sel_period = f"Cumulative Up To {target_month}"
-            # 筛选 <= 当前选定月份的数据
-            period_filtered_df = h_df[h_df["Period"] <= target_month]
-
-    else:  # Single Month Only (仅当月新增)
-        with col_mode2:
-            st.caption("Timeline Slider (Filters data for selected month only)")
-            if len(all_map_periods) > 1:
-                target_month = st.select_slider(
-                    "Timeline Slider",
-                    options=all_map_periods,
-                    value=all_map_periods[-1],
-                    label_visibility="collapsed",
-                )
-            else:
-                target_month = all_map_periods[0]
-
-            sel_period = f"Single Month: {target_month}"
-            # 仅筛选 == 当前选定月份的数据
-            period_filtered_df = h_df[h_df["Period"] == target_month]
-
-    st.write("")
-
-    # 3. 视图 A：美国各州精细热力图 (United States By State)
-    if geo_scope == "United States (By State)":
-        us_df = period_filtered_df[
-            period_filtered_df["COUNTRY_CN"].isin(
-                ["美国", "USA", "United States"]
-            )
-        ].copy()
-
-        state_counts = (
-            us_df.groupby("US_State_Code")
-            .size()
-            .reset_index(name="Sold Units")
-        )
-
-        total_us_units = (
-            state_counts["Sold Units"].sum() if not state_counts.empty else 0
-        )
-        active_states_cnt = (
-            state_counts[state_counts["Sold Units"] > 0][
-                "US_State_Code"
-            ].nunique()
-            if not state_counts.empty
-            else 0
-        )
-
-        top_state_row = (
-            state_counts.sort_values("Sold Units", ascending=False).iloc[0]
-            if not state_counts.empty
-            else None
-        )
-        top_state_name = (
-            f"{top_state_row['US_State_Code']} ({top_state_row['Sold Units']:,})"
-            if top_state_row is not None
-            else "N/A"
-        )
-
-        # 4 个 KPI 卡片
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Product", selected_prod)
-        k2.metric("Total Sold Units", f"{total_us_units:,}")
-        k3.metric("Active States", f"{active_states_cnt}")
-        k4.metric("Top State", top_state_name)
-
-        st.write("---")
-        st.subheader(f"{selected_prod} Sold Units Hotmap ({sel_period})")
-
-        if not state_counts.empty:
-            fig_map = px.choropleth(
-                state_counts,
-                locations="US_State_Code",
-                locationmode="USA-states",
-                color="Sold Units",
-                scope="usa",
-                color_continuous_scale="YlOrRd",
-                labels={"Sold Units": "Sold Units"},
-            )
-
-            fig_map.update_traces(
-                hovertemplate=(
-                    "<b>State: %{location}</b><br>Sold Units:"
-                    " %{z:,}<extra></extra>"
-                )
-            )
-
-            fig_map.update_layout(
-                geo=dict(
-                    bgcolor="rgba(0,0,0,0)",
-                    lakecolor="#ffffff",
-                    showlakes=True,
-                ),
-                height=600,
-                margin=dict(l=10, r=10, t=20, b=10),
-            )
-            st.plotly_chart(fig_map, width="stretch")
-        else:
-            st.info("No US state data available for the selected parameters.")
-
-    # 视图 B：全球国家热力图 (Global By Country)
+      fig_map.update_layout(
+          geo=dict(
+              bgcolor="rgba(0,0,0,0)",
+              lakecolor="#ffffff",
+              showlakes=True,
+          ),
+          height=600,
+          margin=dict(l=10, r=10, t=20, b=10),
+      )
+      st.plotly_chart(fig_map, width="stretch")
     else:
-        country_counts = (
-            period_filtered_df.groupby("COUNTRY_CN")
-            .size()
-            .reset_index(name="Sold Units")
-        )
+      st.info("No US state data available for the selected parameters.")
 
-        total_global_units = (
-            country_counts["Sold Units"].sum() if not country_counts.empty else 0
-        )
-        active_countries_cnt = (
-            country_counts[country_counts["Sold Units"] > 0][
-                "COUNTRY_CN"
-            ].nunique()
-            if not country_counts.empty
-            else 0
-        )
+  else:
+    country_counts = (
+        period_filtered_df.groupby("COUNTRY_CN")
+        .size()
+        .reset_index(name="Sold Units")
+    )
 
-        top_country_row = (
-            country_counts.sort_values("Sold Units", ascending=False).iloc[0]
-            if not country_counts.empty
-            else None
-        )
-        top_country_name = (
-            f"{top_country_row['COUNTRY_CN']} ({top_country_row['Sold Units']:,})"
-            if top_country_row is not None
-            else "N/A"
-        )
+    total_global_units = (
+        country_counts["Sold Units"].sum() if not country_counts.empty else 0
+    )
+    active_countries_cnt = (
+        country_counts[country_counts["Sold Units"] > 0]["COUNTRY_CN"].nunique()
+        if not country_counts.empty
+        else 0
+    )
 
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Product", selected_prod)
-        k2.metric("Total Sold Units", f"{total_global_units:,}")
-        k3.metric("Active Countries", f"{active_countries_cnt}")
-        k4.metric("Top Country", top_country_name)
+    top_country_row = (
+        country_counts.sort_values("Sold Units", ascending=False).iloc[0]
+        if not country_counts.empty
+        else None
+    )
+    top_country_name = (
+        f"{top_country_row['COUNTRY_CN']} ({top_country_row['Sold Units']:,})"
+        if top_country_row is not None
+        else "N/A"
+    )
 
-        st.write("---")
-        st.subheader(f"Global Sold Units Distribution ({sel_period})")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Product", selected_prod)
+    k2.metric("Total Sold Units", f"{total_global_units:,}")
+    k3.metric("Active Countries", f"{active_countries_cnt}")
+    k4.metric("Top Country", top_country_name)
 
-        if not country_counts.empty:
-            fig_map = px.choropleth(
-                country_counts,
-                locations="COUNTRY_CN",
-                locationmode="country names",
-                color="Sold Units",
-                color_continuous_scale="YlOrRd",
-                labels={"Sold Units": "Sold Units"},
-            )
-            fig_map.update_layout(
-                height=600,
-                margin=dict(l=10, r=10, t=20, b=10),
-            )
-            st.plotly_chart(fig_map, width="stretch")
-        else:
-            st.info(
-                "No global country data available for the selected parameters."
-            )
+    st.write("---")
+    st.subheader(f"Global Sold Units Distribution ({sel_period})")
+
+    if not country_counts.empty:
+      fig_map = px.choropleth(
+          country_counts,
+          locations="COUNTRY_CN",
+          locationmode="country names",
+          color="Sold Units",
+          color_continuous_scale="YlOrRd",
+          labels={"Sold Units": "Sold Units"},
+      )
+      fig_map.update_layout(
+          height=600,
+          margin=dict(l=10, r=10, t=20, b=10),
+      )
+      st.plotly_chart(fig_map, width="stretch")
+    else:
+      st.info("No global country data available for the selected parameters.")
 
 # ==============================================================================
 # Module 4: Expiration & Renewal
