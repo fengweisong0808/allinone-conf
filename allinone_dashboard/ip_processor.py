@@ -19,11 +19,10 @@ def process_us_ip_to_state(df):
 
   ip_to_state_map = {}
 
-  # 3. 分批调用 API 动态解析原始 IP 地址（每批 100 个 IP，几秒内即可解析完成）
+  # 3. 分批调用 API 动态解析原始 IP 地址
   batch_size = 100
   for i in range(0, len(unique_ips), batch_size):
     chunk = unique_ips[i : i + batch_size]
-    # 清理非合法字符串
     clean_chunk = [
         str(ip).strip() for ip in chunk if str(ip).strip().count(".") == 3
     ]
@@ -38,10 +37,10 @@ def process_us_ip_to_state(df):
       except Exception:
         pass
 
-  # 4. 将代码解析出的州代码精准映射回 DataFrame
+  # 4. 将解析出的州代码精准映射回 DataFrame
   def map_ip_row(ip):
     ip_str = str(ip).strip()
-    return ip_to_state_map.get(ip_str, "CA")  # 若个别 IP 超时则兜底
+    return ip_to_state_map.get(ip_str, "CA")
 
   df_copy["US_State_Code"] = df_copy["PDT_REG_IP"].apply(map_ip_row)
 
