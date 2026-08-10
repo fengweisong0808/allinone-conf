@@ -537,33 +537,183 @@ elif page == "Registration Trend":
             )
 
 # ==============================================================================
-# Module 3: Geographic Hotmap (调至第 3 模块)
+# Module 3: Registration Hotmap (全新 1:1 还原参考图的美国/全球双视角热力图)
 # ==============================================================================
 elif page == "Registration Hotmap":
-    st.title("🗺️ Geographic Distribution & Hotmap")
-    st.caption(
-        "Analyze device activations geographically based on PDT_REG_IP &"
-        " COUNTRY_CN"
-    )
+    st.title("Sold Units Hotmap")
+    st.caption("Interactive regional heatmaps and product distribution")
 
-    country_counts = df["COUNTRY_CN"].value_counts().reset_index()
-    country_counts.columns = ["Country", "Units"]
+    # 1. 顶部控制栏：产品选择 + 地理视角选择 (US / Global)
+    col_h1, col_h2 = st.columns([2, 1])
 
-    c1, c2 = st.columns([1, 2])
-    with c1:
-        st.subheader("Top Active Countries")
-        st.dataframe(country_counts.head(10))
-    with c2:
-        st.subheader("Registration Distribution by Country")
-        fig_geo = px.bar(
-            country_counts.head(10),
-            x="Country",
-            y="Units",
-            color="Units",
-            color_continuous_scale="YlOrRd",
-            text_auto=True,
+    with col_h1:
+        st.write("**Product Selection**")
+        selected_prod = st.radio(
+            "Product Selection",
+            ["All Products"] + all_products,
+            horizontal=True,
+            label_visibility="collapsed",
         )
-        st.plotly_chart(fig_geo, width="stretch")
+
+    with col_h2:
+        st.write("**Geographic View**")
+        geo_scope = st.radio(
+            "Geographic View",
+            ["United States (By State)", "Global (By Country)"],
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+
+    # 2. 数据过滤与时间选择
+    h_df = df.copy()
+    if selected_prod != "All Products":
+        h_df = h_df[h_df["Product"] == selected_prod]
+
+    h_df["REG_TIME"] = pd.to_datetime(h_df["REG_TIME"], errors="coerce")
+    h_df = h_df.dropna(subset=["REG_TIME"])
+    h_df["Period"] = h_df["REG_TIME"].dt.to_period("M").astype(str)
+
+    all_map_periods = sorted(h_df["Period"].unique())
+
+    if all_map_periods:
+        st.write("---")
+        st.caption("Timeline (Move the time slider to view historical data)")
+        if len(all_map_periods) > 1:
+            sel_period = st.select_slider(
+                "Timeline Slider",
+                options=all_map_periods,
+                value=all_map_periods[-1],  # 默认展示最新月份
+                label_visibility="collapsed",
+            )
+        else:
+            sel_period = all_map_periods[0]
+
+        period_filtered_df = h_df[h_df["Period"] == sel_period]
+    else:
+        sel_period = "N/A"
+        period_filtered_df = h_df
+
+    st.write("")
+
+    # 3. 视图 A：美国各州精细热力图 (United States By State)
+    if geo_scope == "United States (By State)":
+        us_df = period_filtered_df[
+            period_filtered_df["COUNTRY_CN"].isin(["美国", "USA", "United States"])
+        ].copy()
+
+        # 按 2 字母州代码统计
+        state_counts = (
+            us_df.groupby("US_State_Code")
+            .size()
+            .reset_index(name="Sold Units")
+        )
+
+        total_us_units = state_counts["Sold Units"].sum()
+        active_states_cnt = state_counts[state_counts["Sold Units"] > 0][
+            "US_State_Code"
+        ].nunique()
+
+        top_state_row = (
+            state_counts.sort_values("Sold Units", ascending=False).iloc[0]
+            if not state_counts.empty
+            else None
+        )
+        top_state_name = (
+            f"{top_state_row['US_State_Code']} ({top_state_row['Sold Units']:,})"
+            if top_state_row is not None
+            else "N/A"
+        )
+
+        # 4 个精致 KPI 卡片 (匹配截图卡片风格)
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Product", selected_prod)
+        k2.metric("Total Sold Units", f"{total_us_units:,}")
+        k3.metric("Active States", f"{active_states_cnt}")
+        k4.metric("Top State", top_state_name)
+
+        st.write("---")
+        st.subheader(f"{selected_prod} Sold Units Hotmap ({sel_period})")
+
+        if not state_counts.empty:
+            # 绘制 Plotly 美国州级 Choropleth 地图
+            fig_map = px.choropleth(
+                state_counts,
+                locations="US_State_Code",
+                locationmode="USA-states",
+                color="Sold Units",
+                scope="usa",
+                color_continuous_scale="YlOrRd",  # 匹配截图中的黄-橙-深红渐变配色
+                labels={"Sold Units": "Sold Units"},
+            )
+
+            # 在地图上添加各州的数值文本标注（匹配截图上直接显示数值）
+            fig_map.update_traces(
+                text=state_counts["Sold Units"],
+                hovertemplate="<b>State: %{location}</b><br>Sold Units: %{z:,}<extra></extra>",
+            )
+
+            fig_map.update_layout(
+                geo=dict(
+                    bgcolor="rgba(0,0,0,0)",
+                    lakecolor="#ffffff",
+                    showlakes=True,
+                ),
+                height=600,
+                margin=dict(l=10, r=10, t=20, b=10),
+            )
+            st.plotly_chart(fig_map, width="stretch")
+        else:
+            st.info("No US state data available for the selected parameters.")
+
+    # 视图 B：全球国家热力图 (Global By Country)
+    else:
+        country_counts = (
+            period_filtered_df.groupby("COUNTRY_CN")
+            .size()
+            .reset_index(name="Sold Units")
+        )
+
+        total_global_units = country_counts["Sold Units"].sum()
+        active_countries_cnt = country_counts[country_counts["Sold Units"] > 0][
+            "COUNTRY_CN"
+        ].nunique()
+
+        top_country_row = (
+            country_counts.sort_values("Sold Units", ascending=False).iloc[0]
+            if not country_counts.empty
+            else None
+        )
+        top_country_name = (
+            f"{top_country_row['COUNTRY_CN']} ({top_country_row['Sold Units']:,})"
+            if top_country_row is not None
+            else "N/A"
+        )
+
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Product", selected_prod)
+        k2.metric("Total Sold Units", f"{total_global_units:,}")
+        k3.metric("Active Countries", f"{active_countries_cnt}")
+        k4.metric("Top Country", top_country_name)
+
+        st.write("---")
+        st.subheader(f"Global Sold Units Distribution ({sel_period})")
+
+        if not country_counts.empty:
+            fig_map = px.choropleth(
+                country_counts,
+                locations="COUNTRY_CN",
+                locationmode="country names",
+                color="Sold Units",
+                color_continuous_scale="YlOrRd",
+                labels={"Sold Units": "Sold Units"},
+            )
+            fig_map.update_layout(
+                height=600,
+                margin=dict(l=10, r=10, t=20, b=10),
+            )
+            st.plotly_chart(fig_map, width="stretch")
+        else:
+            st.info("No global country data available for the selected parameters.")
 
 # ==============================================================================
 # Module 4: Expiration & Renewal (调至第 4 模块)
