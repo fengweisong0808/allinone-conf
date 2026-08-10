@@ -69,7 +69,7 @@ US_STATE_CENTERS = {
 
 # 2. Load and Preprocess Data
 @st.cache_data(ttl=86400)
-def load_data(_version_hash="v_single_file_003"):
+def load_data(_version_hash="v_single_file_004"):
   current_dir = os.path.dirname(os.path.abspath(__file__))
 
   possible_filenames = [
@@ -625,7 +625,7 @@ elif page == "Registration Trend":
       )
 
 # ==============================================================================
-# Module 3: Registration Hotmap (优化版小标题 + Treemap等大方块填色 + 英文国家代码)
+# Module 3: Registration Hotmap (删掉冗余小标题，界面极致干净)
 # ==============================================================================
 elif page == "Registration Hotmap":
   st.title("Sold Units Hotmap")
@@ -655,13 +655,13 @@ elif page == "Registration Hotmap":
   col_mode1, col_mode2 = st.columns([1, 2])
 
   with col_mode1:
-    st.write("**Data Calculation Mode**")
+    st.write("**Data Calculation Mode / 数据计算模式**")
     calc_mode = st.radio(
         "Calculation Mode",
         [
-            "All Time Cumulative",
-            "Cumulative Up To",
-            "Single Month Only",
+            "All Time Cumulative (历史全量总计)",
+            "Cumulative Up To (截至当前月累加)",
+            "Single Month Only (仅当月新增)",
         ],
         index=0,
         label_visibility="collapsed",
@@ -678,7 +678,7 @@ elif page == "Registration Hotmap":
 
   all_map_periods = sorted(h_df["Period"].unique())
 
-  if calc_mode == "All Time Cumulative":
+  if calc_mode == "All Time Cumulative (历史全量总计)":
     sel_period = (
         f"All Time ({all_map_periods[0]} ~ {all_map_periods[-1]})"
         if all_map_periods
@@ -686,7 +686,7 @@ elif page == "Registration Hotmap":
     )
     period_filtered_df = h_df
 
-  elif calc_mode == "Cumulative Up To":
+  elif calc_mode == "Cumulative Up To (截至当前月累加)":
     with col_mode2:
       st.caption("Timeline Slider (Cumulative from start to selected month)")
       if len(all_map_periods) > 1:
@@ -750,6 +750,7 @@ elif page == "Registration Hotmap":
         else "N/A"
     )
 
+    # 上方核心 KPI 卡片，已包含 Product, Total Units, Active States, Top State
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Product", selected_prod)
     k2.metric("Total Sold Units", f"{total_us_units:,}")
@@ -757,7 +758,6 @@ elif page == "Registration Hotmap":
     k4.metric("Top State", top_state_name)
 
     st.write("---")
-    st.subheader(f"{selected_prod} Sold Units Hotmap ({sel_period})")
 
     if not state_counts.empty:
       lats, lons, text_labels = [], [], []
@@ -855,14 +855,11 @@ elif page == "Registration Hotmap":
         else "N/A"
     )
 
-    # 计算真实份额百分比供悬浮显示
     country_counts["Market_Share"] = (
         country_counts["Sold Units"] / total_global_units
         if total_global_units > 0
         else 0
     )
-
-    # 关键改进：设置等值大小列 (Equal_Box)，强制使所有小国家占有可见的同等方块大小！
     country_counts["Equal_Box"] = 1
 
     k1, k2, k3, k4 = st.columns(4)
@@ -873,20 +870,16 @@ elif page == "Registration Hotmap":
 
     st.write("---")
 
-    # 优化后的精简小标题
-    st.subheader(f"Global Distribution ({sel_period})")
-
     if not country_counts.empty:
       fig_tree = px.treemap(
           country_counts,
-          path=["Country_Code_Str"],  # 使用英文国家缩写代号 (US, GB, ES, IT...)
-          values="Equal_Box",  # 方块面积等大，确保小国家清晰可见
-          color="Sold Units",  # 用颜色深浅直观代表销量高低
+          path=["Country_Code_Str"],
+          values="Equal_Box",
+          color="Sold Units",
           color_continuous_scale="YlOrRd",
           custom_data=["Sold Units", "Market_Share"],
       )
 
-      # 标签内部格式：显示英文国家代码 + 销售台数
       fig_tree.update_traces(
           texttemplate="<b>%{label}</b><br>%{customdata[0]:,} units",
           hovertemplate=(
@@ -897,7 +890,7 @@ elif page == "Registration Hotmap":
 
       fig_tree.update_layout(
           height=600,
-          margin=dict(l=10, r=10, t=30, b=10),
+          margin=dict(l=10, r=10, t=10, b=10),
       )
       st.plotly_chart(fig_tree, width="stretch")
     else:
